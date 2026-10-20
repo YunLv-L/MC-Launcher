@@ -21,14 +21,17 @@ public class DownloadService
     private readonly IProgress<string> _log;
     private readonly IProgress<double> _progress;
     private readonly IProgress<string> _status;
+    private readonly IProgress<string> _fileProgress;
 
     public DownloadService(string baseDir, IProgress<string> log,
-                           IProgress<double> progress, IProgress<string> status)
+                           IProgress<double> progress, IProgress<string> status,
+                           IProgress<string> fileProgress)
     {
         _baseDir = baseDir;
         _log = log;
         _progress = progress;
         _status = status;
+        _fileProgress = fileProgress;
         _http = new HttpClient();
         _http.DefaultRequestHeaders.Add("User-Agent", "MC-Launcher/0.1");
         _http.Timeout = TimeSpan.FromMinutes(10);
@@ -55,13 +58,13 @@ public class DownloadService
 
         var versionDir = Path.Combine(_baseDir, "versions", versionId);
         Directory.CreateDirectory(versionDir);
-        await File.WriteAllTextAsync(
-            Path.Combine(versionDir, $"{versionId}.json"), versionJson, ct);
+        await File.WriteAllTextAsync(Path.Combine(versionDir, $"{versionId}.json"), versionJson, ct);
 
-        var tasks = new List<(string Url, string Path, string? Sha1)>();
+        // --- 收集基础文件任务 ---
+        var baseTasks = new List<(string Url, string Path, string? Sha1)>();
         if (detail.Downloads?.Client != null)
         {
-            tasks.Add((detail.Downloads.Client.Url,
+            baseTasks.Add((detail.Downloads.Client.Url,
                        Path.Combine(versionDir, $"{versionId}.jar"),
                        detail.Downloads.Client.Sha1));
         }
@@ -69,57 +72,64 @@ public class DownloadService
         {
             if (lib.Downloads?.Artifact == null) continue;
             var a = lib.Downloads.Artifact;
-            tasks.Add((a.Url, Path.Combine(_baseDir, "libraries", a.Path), a.Sha1));
+            baseTasks.Add((a.Url, Path.Combine(_baseDir, "libraries", a.Path), a.Sha1));
         }
+        
+        string? idxPath = null;
         if (detail.AssetIndex != null)
         {
-            tasks.Add((detail.AssetIndex.Url,
-                       Path.Combine(_baseDir, "assets", "indexes", $"{detail.AssetIndex.Id}.json"),
-                       detail.AssetIndex.Sha1));
+            idxPath = Path.Combine(_baseDir, "assets", "indexes", $"{detail.AssetIndex.Id}.json");
+            baseTasks.Add((detail.AssetIndex.Url, idxPath, detail.AssetIndex.Sha1));
         }
 
-        _log.Report($"基础文件 {tasks.Count} 个（不含资源对象）");
-        _status.Report("开始下载基础文件...");
-
-        int done = 0, total = tasks.Count;
-        foreach (var t in tasks)
+        // 1. 下载基础文件
+        _status.Report("正在下载基础文件...");
+        int baseTotal = baseTasks.Count;
+        int baseDone = 0;
+        
+        foreach (var t in baseTasks)
         {
             ct.ThrowIfCancellationRequested();
+            _fileProgress.Report($"{baseDone} / {baseTotal} (基础)");
             await DownloadFileAsync(t.Url, t.Path, t.Sha1, ct);
-            done++;
-            _progress.Report(0.5 * done / total);
+            baseDone++;
+            // 基础文件占前 10% 的进度条
+            _progress.Report(0.1 * baseDone / baseTotal);
         }
+        _fileProgress.Report($"{baseTotal} / {baseTotal} (基础)");
 
-        if (detail.AssetIndex != null)
+        // 2. 解析资源并下载
+        if (!string.IsNullOrEmpty(idxPath) && File.Exists(idxPath))
         {
-            var idxPath = Path.Combine(_baseDir, "assets", "indexes", $"{detail.AssetIndex.Id}.json");
-            if (File.Exists(idxPath))
+            var idxJson = await File.ReadAllTextAsync(idxPath, ct);
+            var idx = JsonSerializer.Deserialize<AssetIndex>(idxJson, JsonOpts);
+            if (idx?.Objects != null && idx.Objects.Count > 0)
             {
                 _status.Report("正在下载资源文件...");
-                var idxJson = await File.ReadAllTextAsync(idxPath, ct);
-                var idx = JsonSerializer.Deserialize<AssetIndex>(idxJson, JsonOpts);
-                if (idx?.Objects != null && idx.Objects.Count > 0)
+                var objs = idx.Objects.Values.ToList();
+                _log.Report($"资源对象 {objs.Count} 个");
+
+                int assetTotal = objs.Count;
+                int assetDone = 0;
+                
+                foreach (var obj in objs)
                 {
-                    var objs = idx.Objects.Values.ToList();
-                    _log.Report($"资源对象 {objs.Count} 个");
-                    int assetDone = 0;
-                    foreach (var obj in objs)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var hash = obj.Hash;
-                        var prefix = hash[..2];
-                        var objPath = Path.Combine(_baseDir, "assets", "objects", prefix, hash);
-                        await DownloadFileAsync($"{ResourcesBaseUrl}/{prefix}/{hash}",
-                                                objPath, hash, ct);
-                        assetDone++;
-                        if (assetDone % 50 == 0)
-                            _progress.Report(0.5 + 0.5 * assetDone / objs.Count);
-                    }
-                    _progress.Report(1.0);
+                    ct.ThrowIfCancellationRequested();
+                    var hash = obj.Hash;
+                    var prefix = hash[..2];
+                    var objPath = Path.Combine(_baseDir, "assets", "objects", prefix, hash);
+                    
+                    await DownloadFileAsync($"{ResourcesBaseUrl}/{prefix}/{hash}", objPath, hash, ct);
+                    
+                    assetDone++;
+                    // 资源文件更新数量和进度条（占后 90%）
+                    _fileProgress.Report($"{assetDone} / {assetTotal} (资源)");
+                    _progress.Report(0.1 + 0.9 * assetDone / assetTotal);
                 }
             }
         }
 
+        _progress.Report(1.0);
         _status.Report("下载完成");
     }
 

@@ -23,8 +23,14 @@
     </StackPanel>
 
     <StackPanel Grid.Row="2" Spacing="8" Margin="0,0,0,12">
-      <TextBlock x:Name="StatusText" Text="就绪"
-                 FontSize="13" Foreground="Gray"/>
+      <!-- 状态文本与文件数 -->
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪"
+                   FontSize="13" Foreground="Gray" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="1" x:Name="FileCountText" Text=""
+                   FontSize="13" Foreground="#0078D4" FontWeight="SemiBold"/>
+      </Grid>
+      <!-- 进度条 -->
       <ProgressBar x:Name="ProgressBar" Height="6"
                    Minimum="0" Maximum="100" Value="0" CornerRadius="3"/>
     </StackPanel>
