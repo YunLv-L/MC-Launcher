@@ -1,8 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree; // 必须引入：用于查找内部控件
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;        // 必须引入：用于 OfType 扩展方法
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,7 +33,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var currentSelection = selectVersion ?? (VersionComboBox.SelectedItem as string);
+            var currentSelection = selectVersion ?? GetSelectedVersion();
             var versions = await _versionService.GetAvailableVersionsAsync();
 
             VersionComboBox.ItemsSource = versions;
@@ -40,7 +42,7 @@ public partial class MainWindow : Window
             {
                 VersionComboBox.SelectedItem = currentSelection;
             }
-            else if (versions.Count > 0)
+            else if (versions.Count > 0 && string.IsNullOrEmpty(currentSelection))
             {
                 VersionComboBox.SelectedIndex = 0;
             }
@@ -60,9 +62,16 @@ public partial class MainWindow : Window
         RefreshVersionsButton.IsEnabled = true;
     }
 
+    // 修复 ComboBox 没有 Text 属性的核心方法
     private string GetSelectedVersion()
     {
-        return VersionComboBox.SelectedItem as string ?? VersionComboBox.Text ?? "";
+        // 1. 优先尝试获取下拉列表选中的项
+        if (VersionComboBox.SelectedItem is string selected && !string.IsNullOrWhiteSpace(selected))
+            return selected;
+
+        // 2. 如果没有选中项（用户手动输入的），从视觉树中查找内部的 TextBox
+        var textBox = VersionComboBox.GetVisualDescendants().OfType<TextBox>().FirstOrDefault();
+        return textBox?.Text?.Trim() ?? "";
     }
 
     private void OnSaveSettingsClick(object? sender, RoutedEventArgs e)
@@ -202,7 +211,6 @@ public partial class MainWindow : Window
     private async void OnInstallFabricClick(object? sender, RoutedEventArgs e)
     {
         var mcVersion = GetSelectedVersion();
-        // 防止用户在下拉框里选了 Forge 版本去装 Fabric
         if (string.IsNullOrEmpty(mcVersion) || mcVersion.Contains("-forge-") || mcVersion.Contains("fabric-loader"))
         {
             AppendLog("请先在主页选择一个【纯原版】的 Minecraft 版本（如 1.20.1）");
@@ -219,7 +227,6 @@ public partial class MainWindow : Window
             var fabricVersionId = await installer.InstallFabricAsync(mcVersion, loaderVersion);
             AppendLog($"✅ Fabric 安装成功！版本 ID: {fabricVersionId}");
 
-            // 安装成功后刷新列表，并自动选中新版本
             await LoadVersionsAsync(fabricVersionId);
         }
         catch (Exception ex)
@@ -259,7 +266,6 @@ public partial class MainWindow : Window
             var forgeVersionId = await installer.InstallForgeAsync(mcVersion, forgeVersion, javaPath);
             AppendLog($"✅ Forge 安装成功！版本 ID: {forgeVersionId}");
 
-            // 安装成功后刷新列表，并自动选中新版本
             await LoadVersionsAsync(forgeVersionId);
         }
         catch (Exception ex)
