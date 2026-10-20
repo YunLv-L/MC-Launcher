@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,12 +12,57 @@ public partial class MainWindow : Window
 {
     private CancellationTokenSource? _cts;
     private AppSettings _settings;
+    private VersionService _versionService;
 
     public MainWindow()
     {
         InitializeComponent();
         _settings = AppSettings.Load();
         ThreadInput.Value = _settings.MaxThreads;
+
+        var baseDir = Path.Combine(AppContext.BaseDirectory, "minecraft");
+        _versionService = new VersionService(baseDir);
+
+        // 异步加载版本列表
+        _ = LoadVersionsAsync();
+    }
+
+    private async Task LoadVersionsAsync(string? selectVersion = null)
+    {
+        try
+        {
+            var currentSelection = selectVersion ?? (VersionComboBox.SelectedItem as string);
+            var versions = await _versionService.GetAvailableVersionsAsync();
+
+            VersionComboBox.ItemsSource = versions;
+
+            if (!string.IsNullOrEmpty(currentSelection) && versions.Contains(currentSelection))
+            {
+                VersionComboBox.SelectedItem = currentSelection;
+            }
+            else if (versions.Count > 0)
+            {
+                VersionComboBox.SelectedIndex = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"❌ 获取版本列表失败: {ex.Message}");
+        }
+    }
+
+    private async void OnRefreshVersionsClick(object? sender, RoutedEventArgs e)
+    {
+        RefreshVersionsButton.IsEnabled = false;
+        AppendLog("正在刷新版本列表...");
+        await LoadVersionsAsync();
+        AppendLog("版本列表已刷新。");
+        RefreshVersionsButton.IsEnabled = true;
+    }
+
+    private string GetSelectedVersion()
+    {
+        return VersionComboBox.SelectedItem as string ?? VersionComboBox.Text ?? "";
     }
 
     private void OnSaveSettingsClick(object? sender, RoutedEventArgs e)
@@ -40,10 +86,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var version = VersionInput.Text?.Trim();
+        var version = GetSelectedVersion();
         if (string.IsNullOrEmpty(version))
         {
-            AppendLog("请输入版本号");
+            AppendLog("请选择或输入版本号");
             return;
         }
 
@@ -91,8 +137,8 @@ public partial class MainWindow : Window
     {
         if (_cts != null) return;
 
-        var version = VersionInput.Text?.Trim();
-        if (string.IsNullOrEmpty(version)) { AppendLog("请输入版本号"); return; }
+        var version = GetSelectedVersion();
+        if (string.IsNullOrEmpty(version)) { AppendLog("请选择或输入版本号"); return; }
 
         _cts = new CancellationTokenSource();
         VerifyButton.IsEnabled = false;
@@ -125,11 +171,11 @@ public partial class MainWindow : Window
 
     private async void OnLaunchClick(object? sender, RoutedEventArgs e)
     {
-        var version = VersionInput.Text?.Trim();
+        var version = GetSelectedVersion();
         var username = UsernameInput.Text?.Trim();
         var javaPath = JavaPathInput.Text?.Trim();
 
-        if (string.IsNullOrEmpty(version)) { AppendLog("请输入版本号"); return; }
+        if (string.IsNullOrEmpty(version)) { AppendLog("请选择或输入版本号"); return; }
 
         LaunchButton.IsEnabled = false;
         var baseDir = Path.Combine(AppContext.BaseDirectory, "minecraft");
@@ -151,27 +197,30 @@ public partial class MainWindow : Window
         }
     }
 
-    // ================== 新增：安装按钮事件 ==================
+    // ================== 安装按钮事件 ==================
 
     private async void OnInstallFabricClick(object? sender, RoutedEventArgs e)
     {
-        var mcVersion = VersionInput.Text?.Trim();
-        if (string.IsNullOrEmpty(mcVersion))
+        var mcVersion = GetSelectedVersion();
+        // 防止用户在下拉框里选了 Forge 版本去装 Fabric
+        if (string.IsNullOrEmpty(mcVersion) || mcVersion.Contains("-forge-") || mcVersion.Contains("fabric-loader"))
         {
-            AppendLog("请先在主页输入基础 Minecraft 版本号，如 1.20.1");
+            AppendLog("请先在主页选择一个【纯原版】的 Minecraft 版本（如 1.20.1）");
             return;
         }
 
         var loaderVersion = FabricLoaderVersionInput.Text?.Trim();
         InstallFabricButton.IsEnabled = false;
-        AppendLog($"开始安装 Fabric (MC: {mcVersion})...");
+        AppendLog($"开始安装 Fabric (基于 MC: {mcVersion})...");
 
         try
         {
             var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(AppendLog));
             var fabricVersionId = await installer.InstallFabricAsync(mcVersion, loaderVersion);
             AppendLog($"✅ Fabric 安装成功！版本 ID: {fabricVersionId}");
-            VersionInput.Text = fabricVersionId;
+
+            // 安装成功后刷新列表，并自动选中新版本
+            await LoadVersionsAsync(fabricVersionId);
         }
         catch (Exception ex)
         {
@@ -185,12 +234,18 @@ public partial class MainWindow : Window
 
     private async void OnInstallForgeClick(object? sender, RoutedEventArgs e)
     {
-        var mcVersion = VersionInput.Text?.Trim();
+        var mcVersion = GetSelectedVersion();
         var forgeVersion = ForgeVersionInput.Text?.Trim();
 
-        if (string.IsNullOrEmpty(mcVersion) || string.IsNullOrEmpty(forgeVersion))
+        if (string.IsNullOrEmpty(mcVersion) || mcVersion.Contains("-forge-") || mcVersion.Contains("fabric-loader"))
         {
-            AppendLog("请先在主页输入基础 MC 版本，并在设置页输入 Forge 版本 (如 47.2.0)");
+            AppendLog("请先在主页选择一个【纯原版】的 Minecraft 版本（如 1.20.1）");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(forgeVersion))
+        {
+            AppendLog("请输入 Forge 版本 (如 47.2.0)");
             return;
         }
 
@@ -203,7 +258,9 @@ public partial class MainWindow : Window
             var javaPath = JavaPathInput.Text?.Trim() ?? "java";
             var forgeVersionId = await installer.InstallForgeAsync(mcVersion, forgeVersion, javaPath);
             AppendLog($"✅ Forge 安装成功！版本 ID: {forgeVersionId}");
-            VersionInput.Text = forgeVersionId;
+
+            // 安装成功后刷新列表，并自动选中新版本
+            await LoadVersionsAsync(forgeVersionId);
         }
         catch (Exception ex)
         {
