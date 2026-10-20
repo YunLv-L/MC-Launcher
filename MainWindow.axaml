@@ -4,45 +4,68 @@
         Title="MC-Launcher"
         Width="820" Height="620"
         WindowStartupLocation="CenterScreen">
-  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20">
+  <Grid Margin="20">
+    <TabControl>
+      <!-- 主页 Tab -->
+      <TabItem Header="主页" FontSize="15">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="10,15,10,10">
+          <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,20">
+            <TextBlock Text="MC-Launcher" FontSize="28" FontWeight="Bold"/>
+            <TextBlock Text="Minecraft 下载器 · 仅下载阶段" FontSize="12" Foreground="Gray"/>
+          </StackPanel>
 
-    <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,20">
-      <TextBlock Text="MC-Launcher"
-                 FontSize="28" FontWeight="Bold"/>
-      <TextBlock Text="Minecraft 下载器 · 仅下载阶段"
-                 FontSize="12" Foreground="Gray"/>
-    </StackPanel>
+          <!-- 第一行：版本号与操作按钮 -->
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
+            <TextBox x:Name="VersionInput" Width="180" Watermark="输入版本号，如 1.20.1" FontSize="14"/>
+            <Button x:Name="DownloadButton" Content="开始下载" Click="OnDownloadClick"
+                    Background="#0078D4" Foreground="White" Padding="20,8" CornerRadius="4"/>
+            <Button x:Name="VerifyButton" Content="校验文件" Click="OnVerifyClick"
+                    Background="#555555" Foreground="White" Padding="20,8" CornerRadius="4"/>
+          </StackPanel>
 
-    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
-      <TextBox x:Name="VersionInput" Width="260"
-               Watermark="输入版本号，如 1.21" FontSize="14"/>
-      <Button x:Name="DownloadButton" Content="开始下载"
-              Click="OnDownloadClick"
-              Background="#0078D4" Foreground="White"
-              Padding="24,8" CornerRadius="4"/>
-    </StackPanel>
+          <!-- 第二行：启动设置 -->
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
+            <TextBox x:Name="UsernameInput" Width="150" Watermark="玩家名字" Text="Steve" FontSize="14"/>
+            <TextBox x:Name="JavaPathInput" Width="220" Watermark="java.exe 路径" Text="java" FontSize="14"/>
+            <Button x:Name="LaunchButton" Content="启动游戏" Click="OnLaunchClick"
+                    Background="#107C10" Foreground="White" Padding="24,8" CornerRadius="4"/>
+          </StackPanel>
 
-    <StackPanel Grid.Row="2" Spacing="8" Margin="0,0,0,12">
-      <!-- 状态文本与文件数 -->
-      <Grid ColumnDefinitions="*,Auto">
-        <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪"
-                   FontSize="13" Foreground="Gray" VerticalAlignment="Center"/>
-        <TextBlock Grid.Column="1" x:Name="FileCountText" Text=""
-                   FontSize="13" Foreground="#0078D4" FontWeight="SemiBold"/>
-      </Grid>
-      <!-- 进度条 -->
-      <ProgressBar x:Name="ProgressBar" Height="6"
-                   Minimum="0" Maximum="100" Value="0" CornerRadius="3"/>
-    </StackPanel>
+          <!-- 第三行：状态与进度 -->
+          <StackPanel Grid.Row="3" Spacing="8" Margin="0,0,0,12">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪" FontSize="13" Foreground="Gray" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" x:Name="FileCountText" Text="" FontSize="13" Foreground="#0078D4" FontWeight="SemiBold"/>
+            </Grid>
+            <ProgressBar x:Name="ProgressBar" Height="6" Minimum="0" Maximum="100" Value="0" CornerRadius="3"/>
+          </StackPanel>
 
-    <Border Grid.Row="3" BorderBrush="#333" BorderThickness="1"
-            CornerRadius="6" Background="#1E1E1E">
-      <ListBox x:Name="LogList" FontFamily="Consolas" FontSize="12"
-               Background="Transparent" BorderThickness="0"
-               Foreground="#D4D4D4"/>
-    </Border>
+          <!-- 第四行：日志框 -->
+          <Border Grid.Row="4" BorderBrush="#333" BorderThickness="1" CornerRadius="6" Background="#1E1E1E">
+            <ListBox x:Name="LogList" FontFamily="Consolas" FontSize="12" Background="Transparent" BorderThickness="0" Foreground="#D4D4D4"/>
+          </Border>
 
-    <TextBlock Grid.Row="4" Text="下载目录: ./minecraft/"
-               FontSize="11" Foreground="Gray" Margin="0,8,0,0"/>
+          <TextBlock Grid.Row="5" Text="下载目录: ./minecraft/" FontSize="11" Foreground="Gray" Margin="0,8,0,0"/>
+        </Grid>
+      </TabItem>
+
+      <!-- 设置 Tab -->
+      <TabItem Header="设置" FontSize="15">
+        <StackPanel Margin="10,20,10,10" Spacing="20">
+          <TextBlock Text="下载设置" FontSize="20" FontWeight="Bold"/>
+
+          <StackPanel Spacing="8">
+            <TextBlock Text="最大并发下载线程数：" FontSize="14"/>
+            <Grid ColumnDefinitions="Auto,*">
+              <NumericUpDown x:Name="ThreadInput" Width="150" Minimum="1" Maximum="128" Value="16" Increment="1"/>
+              <TextBlock Grid.Column="1" Text="(建议 16~32，过高可能会被服务器限流)" FontSize="12" Foreground="Gray" VerticalAlignment="Center" Margin="15,0,0,0"/>
+            </Grid>
+          </StackPanel>
+
+          <Button x:Name="SaveSettingsButton" Content="保存设置" Click="OnSaveSettingsClick"
+                  Background="#0078D4" Foreground="White" Padding="24,8" CornerRadius="4" HorizontalAlignment="Left"/>
+        </StackPanel>
+      </TabItem>
+    </TabControl>
   </Grid>
 </Window>

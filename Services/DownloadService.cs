@@ -22,27 +22,130 @@ public class DownloadService
     private readonly IProgress<double> _progress;
     private readonly IProgress<string> _status;
     private readonly IProgress<string> _fileProgress;
+    private readonly int _maxThreads;
 
     public DownloadService(string baseDir, IProgress<string> log,
                            IProgress<double> progress, IProgress<string> status,
-                           IProgress<string> fileProgress)
+                           IProgress<string> fileProgress, int maxThreads)
     {
         _baseDir = baseDir;
         _log = log;
         _progress = progress;
         _status = status;
         _fileProgress = fileProgress;
-        _http = new HttpClient();
+        _maxThreads = Math.Clamp(maxThreads, 1, 128);
+
+        var handler = new SocketsHttpHandler { MaxConnectionsPerServer = _maxThreads };
+        _http = new HttpClient(handler);
         _http.DefaultRequestHeaders.Add("User-Agent", "MC-Launcher/0.1");
         _http.Timeout = TimeSpan.FromMinutes(10);
     }
 
+    // 校验文件完整性
+    public async Task VerifyVersionAsync(string versionId, CancellationToken ct)
+    {
+        _status.Report("正在获取版本清单，准备校验...");
+
+        var detail = await GetVersionDetailAsync(versionId, ct);
+        var (baseTasks, assetTasks) = await GetAllTasksAsync(detail, versionId, ct);
+
+        var allTasks = new List<(string Url, string Path, string? Sha1)>();
+        allTasks.AddRange(baseTasks);
+        allTasks.AddRange(assetTasks);
+
+        int total = allTasks.Count;
+        int done = 0;
+        int corruptedCount = 0;
+        var corruptedFiles = new List<string>();
+        var options = new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = _maxThreads };
+
+        _status.Report("正在校验文件完整性...");
+        _log.Report($"开始校验 {total} 个文件...");
+
+        await Parallel.ForEachAsync(allTasks, options, async (t, token) =>
+        {
+            bool isOk = true;
+            if (!File.Exists(t.Path))
+            {
+                isOk = false;
+            }
+            else if (t.Sha1 != null)
+            {
+                var actual = await ComputeSha1Async(t.Path);
+                if (!string.Equals(actual, t.Sha1, StringComparison.OrdinalIgnoreCase))
+                    isOk = false;
+            }
+
+            if (!isOk)
+            {
+                Interlocked.Increment(ref corruptedCount);
+                lock (corruptedFiles) { corruptedFiles.Add(Path.GetFileName(t.Path)); }
+            }
+
+            int current = Interlocked.Increment(ref done);
+            _fileProgress.Report($"{current} / {total} (校验)");
+            _progress.Report((double)current / total);
+        });
+
+        _progress.Report(1.0);
+        _status.Report("校验完成");
+
+        if (corruptedCount == 0)
+        {
+            _log.Report("✅ 校验通过！所有文件完好无损。");
+        }
+        else
+        {
+            _log.Report($"⚠️ 发现 {corruptedCount} 个文件缺失或损坏：");
+            foreach (var f in corruptedFiles.Take(10))
+                _log.Report($"   - {f}");
+            if (corruptedCount > 10) _log.Report("   - ... (仅显示前 10 个)");
+            _log.Report("请重新点击【开始下载】进行修复。");
+        }
+    }
+
+    // 下载游戏文件
     public async Task DownloadVersionAsync(string versionId, CancellationToken ct)
     {
-        Directory.CreateDirectory(_baseDir);
+        _status.Report("正在获取版本详情...");
+        var detail = await GetVersionDetailAsync(versionId, ct);
+        var (baseTasks, assetTasks) = await GetAllTasksAsync(detail, versionId, ct);
 
-        _status.Report("正在获取版本清单...");
-        _log.Report("获取版本清单...");
+        _status.Report("正在下载基础文件...");
+        int baseTotal = baseTasks.Count;
+        int baseDone = 0;
+        var options = new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = _maxThreads };
+
+        await Parallel.ForEachAsync(baseTasks, options, async (t, token) =>
+        {
+            await DownloadFileAsync(t.Url, t.Path, t.Sha1, token);
+            int current = Interlocked.Increment(ref baseDone);
+            _fileProgress.Report($"{current} / {baseTotal} (基础)");
+            _progress.Report(0.1 * current / baseTotal);
+        });
+
+        if (assetTasks.Count > 0)
+        {
+            _status.Report("正在多线程下载资源文件...");
+            _log.Report($"资源对象 {assetTasks.Count} 个，并发线程: {_maxThreads}");
+            int assetTotal = assetTasks.Count;
+            int assetDone = 0;
+
+            await Parallel.ForEachAsync(assetTasks, options, async (t, token) =>
+            {
+                await DownloadFileAsync(t.Url, t.Path, t.Sha1, token);
+                int current = Interlocked.Increment(ref assetDone);
+                _fileProgress.Report($"{current} / {assetTotal} (资源)");
+                _progress.Report(0.1 + 0.9 * current / assetTotal);
+            });
+        }
+
+        _progress.Report(1.0);
+        _status.Report("下载完成");
+    }
+
+    private async Task<VersionDetail> GetVersionDetailAsync(string versionId, CancellationToken ct)
+    {
         var manifestJson = await _http.GetStringAsync(ManifestUrl, ct);
         var manifest = JsonSerializer.Deserialize<VersionManifest>(manifestJson, JsonOpts)
             ?? throw new Exception("版本清单解析失败");
@@ -50,7 +153,6 @@ public class DownloadService
         var versionEntry = manifest.Versions.FirstOrDefault(v => v.Id == versionId)
             ?? throw new Exception($"找不到版本: {versionId}");
 
-        _status.Report($"正在获取版本 {versionId} 的详细信息...");
         _log.Report($"获取版本 {versionId} 详情...");
         var versionJson = await _http.GetStringAsync(versionEntry.Url, ct);
         var detail = JsonSerializer.Deserialize<VersionDetail>(versionJson, JsonOpts)
@@ -60,21 +162,26 @@ public class DownloadService
         Directory.CreateDirectory(versionDir);
         await File.WriteAllTextAsync(Path.Combine(versionDir, $"{versionId}.json"), versionJson, ct);
 
-        // --- 收集基础文件任务 ---
+        return detail;
+    }
+
+    private async Task<(List<(string Url, string Path, string? Sha1)> baseTasks, List<(string Url, string Path, string? Sha1)> assetTasks)>
+        GetAllTasksAsync(VersionDetail detail, string versionId, CancellationToken ct)
+    {
+        var versionDir = Path.Combine(_baseDir, "versions", versionId);
         var baseTasks = new List<(string Url, string Path, string? Sha1)>();
+        var assetTasks = new List<(string Url, string Path, string? Sha1)>();
+
         if (detail.Downloads?.Client != null)
-        {
-            baseTasks.Add((detail.Downloads.Client.Url,
-                       Path.Combine(versionDir, $"{versionId}.jar"),
-                       detail.Downloads.Client.Sha1));
-        }
+            baseTasks.Add((detail.Downloads.Client.Url, Path.Combine(versionDir, $"{versionId}.jar"), detail.Downloads.Client.Sha1));
+
         foreach (var lib in detail.Libraries.Where(IsAllowed))
         {
             if (lib.Downloads?.Artifact == null) continue;
             var a = lib.Downloads.Artifact;
             baseTasks.Add((a.Url, Path.Combine(_baseDir, "libraries", a.Path), a.Sha1));
         }
-        
+
         string? idxPath = null;
         if (detail.AssetIndex != null)
         {
@@ -82,55 +189,23 @@ public class DownloadService
             baseTasks.Add((detail.AssetIndex.Url, idxPath, detail.AssetIndex.Sha1));
         }
 
-        // 1. 下载基础文件
-        _status.Report("正在下载基础文件...");
-        int baseTotal = baseTasks.Count;
-        int baseDone = 0;
-        
-        foreach (var t in baseTasks)
-        {
-            ct.ThrowIfCancellationRequested();
-            _fileProgress.Report($"{baseDone} / {baseTotal} (基础)");
-            await DownloadFileAsync(t.Url, t.Path, t.Sha1, ct);
-            baseDone++;
-            // 基础文件占前 10% 的进度条
-            _progress.Report(0.1 * baseDone / baseTotal);
-        }
-        _fileProgress.Report($"{baseTotal} / {baseTotal} (基础)");
-
-        // 2. 解析资源并下载
         if (!string.IsNullOrEmpty(idxPath) && File.Exists(idxPath))
         {
             var idxJson = await File.ReadAllTextAsync(idxPath, ct);
             var idx = JsonSerializer.Deserialize<AssetIndex>(idxJson, JsonOpts);
-            if (idx?.Objects != null && idx.Objects.Count > 0)
+            if (idx?.Objects != null)
             {
-                _status.Report("正在下载资源文件...");
-                var objs = idx.Objects.Values.ToList();
-                _log.Report($"资源对象 {objs.Count} 个");
-
-                int assetTotal = objs.Count;
-                int assetDone = 0;
-                
-                foreach (var obj in objs)
+                foreach (var obj in idx.Objects.Values)
                 {
-                    ct.ThrowIfCancellationRequested();
                     var hash = obj.Hash;
                     var prefix = hash[..2];
                     var objPath = Path.Combine(_baseDir, "assets", "objects", prefix, hash);
-                    
-                    await DownloadFileAsync($"{ResourcesBaseUrl}/{prefix}/{hash}", objPath, hash, ct);
-                    
-                    assetDone++;
-                    // 资源文件更新数量和进度条（占后 90%）
-                    _fileProgress.Report($"{assetDone} / {assetTotal} (资源)");
-                    _progress.Report(0.1 + 0.9 * assetDone / assetTotal);
+                    assetTasks.Add(($"{ResourcesBaseUrl}/{prefix}/{hash}", objPath, hash));
                 }
             }
         }
 
-        _progress.Report(1.0);
-        _status.Report("下载完成");
+        return (baseTasks, assetTasks);
     }
 
     private async Task DownloadFileAsync(string url, string path, string? expectedSha1, CancellationToken ct)
