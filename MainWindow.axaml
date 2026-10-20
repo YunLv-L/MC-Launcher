@@ -1,0 +1,42 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MCLauncher.MainWindow"
+        Title="MC-Launcher"
+        Width="820" Height="620"
+        WindowStartupLocation="CenterScreen">
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20">
+
+    <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,20">
+      <TextBlock Text="MC-Launcher"
+                 FontSize="28" FontWeight="Bold"/>
+      <TextBlock Text="Minecraft 下载器 · 仅下载阶段"
+                 FontSize="12" Foreground="Gray"/>
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
+      <TextBox x:Name="VersionInput" Width="260"
+               Watermark="输入版本号，如 1.21" FontSize="14"/>
+      <Button x:Name="DownloadButton" Content="开始下载"
+              Click="OnDownloadClick"
+              Background="#0078D4" Foreground="White"
+              Padding="24,8" CornerRadius="4"/>
+    </StackPanel>
+
+    <StackPanel Grid.Row="2" Spacing="8" Margin="0,0,0,12">
+      <TextBlock x:Name="StatusText" Text="就绪"
+                 FontSize="13" Foreground="Gray"/>
+      <ProgressBar x:Name="ProgressBar" Height="6"
+                   Minimum="0" Maximum="100" Value="0" CornerRadius="3"/>
+    </StackPanel>
+
+    <Border Grid.Row="3" BorderBrush="#333" BorderThickness="1"
+            CornerRadius="6" Background="#1E1E1E">
+      <ListBox x:Name="LogList" FontFamily="Consolas" FontSize="12"
+               Background="Transparent" BorderThickness="0"
+               Foreground="#D4D4D4"/>
+    </Border>
+
+    <TextBlock Grid.Row="4" Text="下载目录: ./minecraft/"
+               FontSize="11" Foreground="Gray" Margin="0,8,0,0"/>
+  </Grid>
+</Window>
