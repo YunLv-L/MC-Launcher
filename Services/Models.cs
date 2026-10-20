@@ -16,9 +16,18 @@ public class VersionEntry
 public class VersionDetail
 {
     public string Id { get; set; } = "";
+    public string? InheritsFrom { get; set; } // 继承的父版本
+    public string? MainClass { get; set; }    // 覆盖的主类
     public DownloadsInfo? Downloads { get; set; }
     public List<Library> Libraries { get; set; } = new();
     public AssetIndexInfo? AssetIndex { get; set; }
+    public Arguments? Arguments { get; set; }
+}
+
+public class Arguments
+{
+    public List<object>? Game { get; set; }
+    public List<object>? Jvm { get; set; }
 }
 
 public class DownloadsInfo
@@ -74,4 +83,34 @@ public class RuleOs
 {
     public string? Name { get; set; }
     public string? Arch { get; set; }
+}
+
+// ================== Fabric API 模型 ==================
+public class FabricLoaderEntry
+{
+    public LoaderInfo Loader { get; set; } = new();
+    public LauncherMetaInfo? LauncherMeta { get; set; }
+}
+
+public class LoaderInfo
+{
+    public string Version { get; set; } = "";
+    public bool Stable { get; set; }
+}
+
+public class LauncherMetaInfo
+{
+    public LibrariesInfo? Libraries { get; set; }
+}
+
+public class LibrariesInfo
+{
+    public List<FabricLibrary>? Client { get; set; }
+}
+
+public class FabricLibrary
+{
+    public string Name { get; set; } = "";
+    public string Url { get; set; } = "";
+    public string? Sha1 { get; set; }
 }

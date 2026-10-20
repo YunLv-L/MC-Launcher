@@ -26,32 +26,25 @@ public class LaunchService
     {
         _status.Report("正在准备启动环境...");
 
-        var jsonPath = Path.Combine(_baseDir, "versions", versionId, $"{versionId}.json");
-        if (!File.Exists(jsonPath))
-            throw new Exception("找不到版本 JSON，请先下载该版本。");
+        var versionChain = await LoadVersionChainAsync(versionId);
+        if (versionChain.Count == 0) throw new Exception("无法加载版本信息");
 
-        var jsonText = await File.ReadAllTextAsync(jsonPath);
-        var detail = JsonSerializer.Deserialize<VersionDetail>(jsonText, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-            ?? throw new Exception("解析版本 JSON 失败");
-
+        var mergedDetail = MergeVersionDetails(versionChain);
         var versionDir = Path.Combine(_baseDir, "versions", versionId);
         var nativesDir = Path.Combine(versionDir, "natives");
         Directory.CreateDirectory(nativesDir);
 
-        // 1. 解压 Natives
         _log.Report("正在解压 Natives...");
-        foreach (var lib in detail.Libraries.Where(IsAllowed))
+        foreach (var lib in mergedDetail.Libraries.Where(IsAllowed))
         {
             if (lib.Downloads?.Artifact == null) continue;
             var jarPath = Path.Combine(_baseDir, "libraries", lib.Downloads.Artifact.Path);
-            if (File.Exists(jarPath))
-                ExtractNatives(jarPath, nativesDir);
+            if (File.Exists(jarPath)) ExtractNatives(jarPath, nativesDir);
         }
 
-        // 2. 拼装 ClassPath
         _log.Report("正在拼装 ClassPath...");
         var classPath = new List<string>();
-        foreach (var lib in detail.Libraries.Where(IsAllowed))
+        foreach (var lib in mergedDetail.Libraries.Where(IsAllowed))
         {
             if (lib.Downloads?.Artifact != null)
             {
@@ -59,33 +52,39 @@ public class LaunchService
                 if (File.Exists(path)) classPath.Add(path);
             }
         }
-        var clientJar = Path.Combine(versionDir, $"{versionId}.jar");
+
+        // 原版 Jar
+        var clientJar = Path.Combine(_baseDir, "versions", versionChain.Last().Id, $"{versionChain.Last().Id}.jar");
         if (File.Exists(clientJar)) classPath.Add(clientJar);
+
+        // Forge 等安装器生成的 Wrapper Jar
+        if (versionId != versionChain.Last().Id)
+        {
+            var subJar = Path.Combine(_baseDir, "versions", versionId, $"{versionId}.jar");
+            if (File.Exists(subJar)) classPath.Add(subJar);
+        }
 
         var cpString = string.Join(";", classPath);
 
-        // 3. 拼装启动参数 (离线模式)
         _status.Report("正在拼装启动参数...");
         var args = new List<string>
         {
             "-Xmx2G", "-Xms1G",
             "-Djava.library.path=" + nativesDir,
             "-cp", cpString,
-            "net.minecraft.client.main.Main",
-            "--username", username,
-            "--version", versionId,
-            "--gameDir", _baseDir,
-            "--assetsDir", Path.Combine(_baseDir, "assets"),
-            "--assetIndex", detail.AssetIndex?.Id ?? "legacy",
-            "--uuid", Guid.NewGuid().ToString("N"), // 离线模式 UUID
-            "--accessToken", "0", // 离线模式 token
-            "--userType", "legacy",
-            "--versionType", "release"
+            mergedDetail.MainClass ?? "net.minecraft.client.main.Main",
         };
 
-        // 4. 启动进程
+        args.AddRange(new[] {
+            "--username", username, "--version", versionId,
+            "--gameDir", _baseDir, "--assetsDir", Path.Combine(_baseDir, "assets"),
+            "--assetIndex", mergedDetail.AssetIndex?.Id ?? "legacy",
+            "--uuid", Guid.NewGuid().ToString("N"), "--accessToken", "0",
+            "--userType", "legacy", "--versionType", "release"
+        });
+
         _status.Report("正在启动游戏...");
-        _log.Report("拉起 Java 进程...");
+        _log.Report($"拉起 Java 进程，主类: {mergedDetail.MainClass}");
 
         var psi = new ProcessStartInfo
         {
@@ -100,7 +99,54 @@ public class LaunchService
 
         await process.WaitForExitAsync();
         _status.Report("游戏已退出");
-        _log.Report($"游戏进程退出，退出码: {process.ExitCode}");
+    }
+
+    private async Task<List<VersionDetail>> LoadVersionChainAsync(string versionId)
+    {
+        var chain = new List<VersionDetail>();
+        string? currentId = versionId;
+
+        while (!string.IsNullOrEmpty(currentId))
+        {
+            var jsonPath = Path.Combine(_baseDir, "versions", currentId, $"{currentId}.json");
+            if (!File.Exists(jsonPath))
+                throw new Exception($"找不到版本 JSON: {currentId}，请先下载该版本。");
+
+            var json = await File.ReadAllTextAsync(jsonPath);
+            var detail = JsonSerializer.Deserialize<VersionDetail>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (detail == null) throw new Exception($"解析版本 JSON 失败: {currentId}");
+
+            chain.Add(detail);
+            currentId = detail.InheritsFrom;
+        }
+
+        chain.Reverse();
+        return chain;
+    }
+
+    private VersionDetail MergeVersionDetails(List<VersionDetail> chain)
+    {
+        var result = new VersionDetail
+        {
+            Id = chain.Last().Id,
+            MainClass = chain.Last().MainClass ?? chain.First().MainClass,
+            AssetIndex = chain.First().AssetIndex,
+            Libraries = new List<Library>()
+        };
+
+        var seenLibs = new HashSet<string>();
+        foreach (var detail in chain)
+        {
+            foreach (var lib in detail.Libraries)
+            {
+                if (seenLibs.Add(lib.Name))
+                {
+                    result.Libraries.Add(lib);
+                }
+            }
+        }
+
+        return result;
     }
 
     private void ExtractNatives(string jarPath, string nativesDir)
@@ -120,10 +166,7 @@ public class LaunchService
                 }
             }
         }
-        catch
-        {
-            // 忽略解析失败的非 native jar
-        }
+        catch { }
     }
 
     private static bool IsAllowed(Library lib)

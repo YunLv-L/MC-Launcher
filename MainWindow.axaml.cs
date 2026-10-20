@@ -15,8 +15,6 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-
-        // 启动时加载配置
         _settings = AppSettings.Load();
         ThreadInput.Value = _settings.MaxThreads;
     }
@@ -51,7 +49,7 @@ public partial class MainWindow : Window
 
         _cts = new CancellationTokenSource();
         DownloadButton.Content = "取消";
-        VerifyButton.IsEnabled = false; // 下载时禁用校验
+        VerifyButton.IsEnabled = false;
         ProgressBar.Value = 0;
         FileCountText.Text = "";
         LogList.Items.Clear();
@@ -85,24 +83,20 @@ public partial class MainWindow : Window
         {
             _cts = null;
             DownloadButton.Content = "开始下载";
-            VerifyButton.IsEnabled = true; // 恢复校验按钮
+            VerifyButton.IsEnabled = true;
         }
     }
 
     private async void OnVerifyClick(object? sender, RoutedEventArgs e)
     {
-        if (_cts != null) return; // 如果正在下载，不允许校验
+        if (_cts != null) return;
 
         var version = VersionInput.Text?.Trim();
-        if (string.IsNullOrEmpty(version))
-        {
-            AppendLog("请输入版本号");
-            return;
-        }
+        if (string.IsNullOrEmpty(version)) { AppendLog("请输入版本号"); return; }
 
         _cts = new CancellationTokenSource();
         VerifyButton.IsEnabled = false;
-        DownloadButton.IsEnabled = false; // 校验时禁用下载
+        DownloadButton.IsEnabled = false;
         ProgressBar.Value = 0;
         FileCountText.Text = "";
         LogList.Items.Clear();
@@ -118,14 +112,8 @@ public partial class MainWindow : Window
             var service = new DownloadService(baseDir, log, progress, status, fileProgress, _settings.MaxThreads);
             await service.VerifyVersionAsync(version, _cts.Token);
         }
-        catch (OperationCanceledException)
-        {
-            AppendLog("⚠️ 校验已取消");
-        }
-        catch (Exception ex)
-        {
-            AppendLog($"❌ 校验失败: {ex.Message}");
-        }
+        catch (OperationCanceledException) { AppendLog("⚠️ 校验已取消"); }
+        catch (Exception ex) { AppendLog($"❌ 校验失败: {ex.Message}"); }
         finally
         {
             _cts = null;
@@ -141,11 +129,7 @@ public partial class MainWindow : Window
         var username = UsernameInput.Text?.Trim();
         var javaPath = JavaPathInput.Text?.Trim();
 
-        if (string.IsNullOrEmpty(version))
-        {
-            AppendLog("请输入版本号");
-            return;
-        }
+        if (string.IsNullOrEmpty(version)) { AppendLog("请输入版本号"); return; }
 
         LaunchButton.IsEnabled = false;
         var baseDir = Path.Combine(AppContext.BaseDirectory, "minecraft");
@@ -164,6 +148,70 @@ public partial class MainWindow : Window
         finally
         {
             LaunchButton.IsEnabled = true;
+        }
+    }
+
+    // ================== 新增：安装按钮事件 ==================
+
+    private async void OnInstallFabricClick(object? sender, RoutedEventArgs e)
+    {
+        var mcVersion = VersionInput.Text?.Trim();
+        if (string.IsNullOrEmpty(mcVersion))
+        {
+            AppendLog("请先在主页输入基础 Minecraft 版本号，如 1.20.1");
+            return;
+        }
+
+        var loaderVersion = FabricLoaderVersionInput.Text?.Trim();
+        InstallFabricButton.IsEnabled = false;
+        AppendLog($"开始安装 Fabric (MC: {mcVersion})...");
+
+        try
+        {
+            var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(AppendLog));
+            var fabricVersionId = await installer.InstallFabricAsync(mcVersion, loaderVersion);
+            AppendLog($"✅ Fabric 安装成功！版本 ID: {fabricVersionId}");
+            VersionInput.Text = fabricVersionId;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"❌ Fabric 安装失败: {ex.Message}");
+        }
+        finally
+        {
+            InstallFabricButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnInstallForgeClick(object? sender, RoutedEventArgs e)
+    {
+        var mcVersion = VersionInput.Text?.Trim();
+        var forgeVersion = ForgeVersionInput.Text?.Trim();
+
+        if (string.IsNullOrEmpty(mcVersion) || string.IsNullOrEmpty(forgeVersion))
+        {
+            AppendLog("请先在主页输入基础 MC 版本，并在设置页输入 Forge 版本 (如 47.2.0)");
+            return;
+        }
+
+        InstallForgeButton.IsEnabled = false;
+        AppendLog($"开始安装 Forge {mcVersion}-{forgeVersion}...");
+
+        try
+        {
+            var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(AppendLog));
+            var javaPath = JavaPathInput.Text?.Trim() ?? "java";
+            var forgeVersionId = await installer.InstallForgeAsync(mcVersion, forgeVersion, javaPath);
+            AppendLog($"✅ Forge 安装成功！版本 ID: {forgeVersionId}");
+            VersionInput.Text = forgeVersionId;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"❌ Forge 安装失败: {ex.Message}");
+        }
+        finally
+        {
+            InstallForgeButton.IsEnabled = true;
         }
     }
 

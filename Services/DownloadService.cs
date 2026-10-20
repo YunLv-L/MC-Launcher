@@ -41,11 +41,9 @@ public class DownloadService
         _http.Timeout = TimeSpan.FromMinutes(10);
     }
 
-    // 校验文件完整性
     public async Task VerifyVersionAsync(string versionId, CancellationToken ct)
     {
         _status.Report("正在获取版本清单，准备校验...");
-
         var detail = await GetVersionDetailAsync(versionId, ct);
         var (baseTasks, assetTasks) = await GetAllTasksAsync(detail, versionId, ct);
 
@@ -65,15 +63,11 @@ public class DownloadService
         await Parallel.ForEachAsync(allTasks, options, async (t, token) =>
         {
             bool isOk = true;
-            if (!File.Exists(t.Path))
-            {
-                isOk = false;
-            }
+            if (!File.Exists(t.Path)) isOk = false;
             else if (t.Sha1 != null)
             {
                 var actual = await ComputeSha1Async(t.Path);
-                if (!string.Equals(actual, t.Sha1, StringComparison.OrdinalIgnoreCase))
-                    isOk = false;
+                if (!string.Equals(actual, t.Sha1, StringComparison.OrdinalIgnoreCase)) isOk = false;
             }
 
             if (!isOk)
@@ -90,21 +84,16 @@ public class DownloadService
         _progress.Report(1.0);
         _status.Report("校验完成");
 
-        if (corruptedCount == 0)
-        {
-            _log.Report("✅ 校验通过！所有文件完好无损。");
-        }
+        if (corruptedCount == 0) _log.Report("✅ 校验通过！所有文件完好无损。");
         else
         {
             _log.Report($"⚠️ 发现 {corruptedCount} 个文件缺失或损坏：");
-            foreach (var f in corruptedFiles.Take(10))
-                _log.Report($"   - {f}");
+            foreach (var f in corruptedFiles.Take(10)) _log.Report($"   - {f}");
             if (corruptedCount > 10) _log.Report("   - ... (仅显示前 10 个)");
             _log.Report("请重新点击【开始下载】进行修复。");
         }
     }
 
-    // 下载游戏文件
     public async Task DownloadVersionAsync(string versionId, CancellationToken ct)
     {
         _status.Report("正在获取版本详情...");
@@ -150,8 +139,19 @@ public class DownloadService
         var manifest = JsonSerializer.Deserialize<VersionManifest>(manifestJson, JsonOpts)
             ?? throw new Exception("版本清单解析失败");
 
-        var versionEntry = manifest.Versions.FirstOrDefault(v => v.Id == versionId)
-            ?? throw new Exception($"找不到版本: {versionId}");
+        var versionEntry = manifest.Versions.FirstOrDefault(v => v.Id == versionId);
+
+        // 如果官方清单里没有（比如 Forge 或 Fabric 版本），直接读本地 JSON
+        if (versionEntry == null)
+        {
+            var localJsonPath = Path.Combine(_baseDir, "versions", versionId, $"{versionId}.json");
+            if (File.Exists(localJsonPath))
+            {
+                var localJson = await File.ReadAllTextAsync(localJsonPath, ct);
+                return JsonSerializer.Deserialize<VersionDetail>(localJson, JsonOpts) ?? throw new Exception("本地版本详情解析失败");
+            }
+            throw new Exception($"找不到版本: {versionId}");
+        }
 
         _log.Report($"获取版本 {versionId} 详情...");
         var versionJson = await _http.GetStringAsync(versionEntry.Url, ct);
@@ -168,44 +168,74 @@ public class DownloadService
     private async Task<(List<(string Url, string Path, string? Sha1)> baseTasks, List<(string Url, string Path, string? Sha1)> assetTasks)>
         GetAllTasksAsync(VersionDetail detail, string versionId, CancellationToken ct)
     {
-        var versionDir = Path.Combine(_baseDir, "versions", versionId);
-        var baseTasks = new List<(string Url, string Path, string? Sha1)>();
+        var allBaseTasks = new List<(string Url, string Path, string? Sha1)>();
         var assetTasks = new List<(string Url, string Path, string? Sha1)>();
 
-        if (detail.Downloads?.Client != null)
-            baseTasks.Add((detail.Downloads.Client.Url, Path.Combine(versionDir, $"{versionId}.jar"), detail.Downloads.Client.Sha1));
-
-        foreach (var lib in detail.Libraries.Where(IsAllowed))
+        var versionChain = new List<VersionDetail>();
+        VersionDetail? current = detail;
+        while (current != null)
         {
-            if (lib.Downloads?.Artifact == null) continue;
-            var a = lib.Downloads.Artifact;
-            baseTasks.Add((a.Url, Path.Combine(_baseDir, "libraries", a.Path), a.Sha1));
-        }
+            versionChain.Add(current);
+            if (string.IsNullOrEmpty(current.InheritsFrom)) break;
 
-        string? idxPath = null;
-        if (detail.AssetIndex != null)
-        {
-            idxPath = Path.Combine(_baseDir, "assets", "indexes", $"{detail.AssetIndex.Id}.json");
-            baseTasks.Add((detail.AssetIndex.Url, idxPath, detail.AssetIndex.Sha1));
-        }
-
-        if (!string.IsNullOrEmpty(idxPath) && File.Exists(idxPath))
-        {
-            var idxJson = await File.ReadAllTextAsync(idxPath, ct);
-            var idx = JsonSerializer.Deserialize<AssetIndex>(idxJson, JsonOpts);
-            if (idx?.Objects != null)
+            var parentJsonPath = Path.Combine(_baseDir, "versions", current.InheritsFrom, $"{current.InheritsFrom}.json");
+            if (File.Exists(parentJsonPath))
             {
-                foreach (var obj in idx.Objects.Values)
+                var parentJson = await File.ReadAllTextAsync(parentJsonPath, ct);
+                current = JsonSerializer.Deserialize<VersionDetail>(parentJson, JsonOpts);
+            }
+            else
+            {
+                _log.Report($"本地未找到父版本 {current.InheritsFrom} 的 JSON，正在从网络获取...");
+                current = await GetVersionDetailAsync(current.InheritsFrom, ct);
+            }
+        }
+
+        versionChain.Reverse(); // 原版在前，子版本在后
+        var addedLibs = new HashSet<string>();
+
+        foreach (var ver in versionChain)
+        {
+            if (ver.Downloads?.Client != null)
+            {
+                var jarPath = Path.Combine(_baseDir, "versions", ver.Id, $"{ver.Id}.jar");
+                allBaseTasks.Add((ver.Downloads.Client.Url, jarPath, ver.Downloads.Client.Sha1));
+            }
+
+            foreach (var lib in ver.Libraries.Where(IsAllowed))
+            {
+                if (lib.Downloads?.Artifact == null) continue;
+                var a = lib.Downloads.Artifact;
+                if (addedLibs.Add(lib.Name))
                 {
-                    var hash = obj.Hash;
-                    var prefix = hash[..2];
-                    var objPath = Path.Combine(_baseDir, "assets", "objects", prefix, hash);
-                    assetTasks.Add(($"{ResourcesBaseUrl}/{prefix}/{hash}", objPath, hash));
+                    allBaseTasks.Add((a.Url, Path.Combine(_baseDir, "libraries", a.Path), a.Sha1));
+                }
+            }
+
+            if (ver.AssetIndex != null && assetTasks.Count == 0)
+            {
+                var idxPath = Path.Combine(_baseDir, "assets", "indexes", $"{ver.AssetIndex.Id}.json");
+                allBaseTasks.Add((ver.AssetIndex.Url, idxPath, ver.AssetIndex.Sha1));
+
+                if (File.Exists(idxPath))
+                {
+                    var idxJson = await File.ReadAllTextAsync(idxPath, ct);
+                    var idx = JsonSerializer.Deserialize<AssetIndex>(idxJson, JsonOpts);
+                    if (idx?.Objects != null)
+                    {
+                        foreach (var obj in idx.Objects.Values)
+                        {
+                            var hash = obj.Hash;
+                            var prefix = hash[..2];
+                            var objPath = Path.Combine(_baseDir, "assets", "objects", prefix, hash);
+                            assetTasks.Add(($"{ResourcesBaseUrl}/{prefix}/{hash}", objPath, hash));
+                        }
+                    }
                 }
             }
         }
 
-        return (baseTasks, assetTasks);
+        return (allBaseTasks, assetTasks);
     }
 
     private async Task DownloadFileAsync(string url, string path, string? expectedSha1, CancellationToken ct)
