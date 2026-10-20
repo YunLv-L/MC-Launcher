@@ -16,7 +16,8 @@
 
           <!-- 第一行：版本选择与下载 -->
           <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
-            <ComboBox x:Name="VersionComboBox" Width="220" Watermark="请选择或输入版本" FontSize="14" IsEditable="True"/>
+            <!-- 使用 AutoCompleteBox 替代 ComboBox -->
+            <AutoCompleteBox x:Name="VersionComboBox" Width="220" Watermark="请选择或输入版本" FontSize="14" MinimumPrefixLength="0" FilterMode="Contains"/>
             <Button x:Name="RefreshVersionsButton" Content="刷新列表" Click="OnRefreshVersionsClick"
                     Background="#555555" Foreground="White" Padding="12,8" CornerRadius="4"/>
             <Button x:Name="DownloadButton" Content="开始下载" Click="OnDownloadClick"

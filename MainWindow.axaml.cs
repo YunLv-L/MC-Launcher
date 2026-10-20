@@ -1,10 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.VisualTree; // 必须引入：用于查找内部控件
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;        // 必须引入：用于 OfType 扩展方法
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -38,13 +36,13 @@ public partial class MainWindow : Window
 
             VersionComboBox.ItemsSource = versions;
 
-            if (!string.IsNullOrEmpty(currentSelection) && versions.Contains(currentSelection))
+            if (!string.IsNullOrEmpty(currentSelection))
             {
-                VersionComboBox.SelectedItem = currentSelection;
+                VersionComboBox.Text = currentSelection;
             }
-            else if (versions.Count > 0 && string.IsNullOrEmpty(currentSelection))
+            else if (versions.Count > 0)
             {
-                VersionComboBox.SelectedIndex = 0;
+                VersionComboBox.Text = versions[0];
             }
         }
         catch (Exception ex)
@@ -62,16 +60,10 @@ public partial class MainWindow : Window
         RefreshVersionsButton.IsEnabled = true;
     }
 
-    // 修复 ComboBox 没有 Text 属性的核心方法
+    // 直接读取 AutoCompleteBox 的 Text 属性即可，非常清爽
     private string GetSelectedVersion()
     {
-        // 1. 优先尝试获取下拉列表选中的项
-        if (VersionComboBox.SelectedItem is string selected && !string.IsNullOrWhiteSpace(selected))
-            return selected;
-
-        // 2. 如果没有选中项（用户手动输入的），从视觉树中查找内部的 TextBox
-        var textBox = VersionComboBox.GetVisualDescendants().OfType<TextBox>().FirstOrDefault();
-        return textBox?.Text?.Trim() ?? "";
+        return VersionComboBox.Text?.Trim() ?? "";
     }
 
     private void OnSaveSettingsClick(object? sender, RoutedEventArgs e)
