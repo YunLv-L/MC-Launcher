@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:MCLauncher"
         x:Class="MCLauncher.MainWindow"
         Title="MC-Launcher"
         Width="920" Height="680" Background="#181818"
@@ -45,7 +46,7 @@
                 </StackPanel>
                 <StackPanel Spacing="6">
                   <TextBlock Text="Java 路径" FontSize="13" Foreground="#AAAAAA"/>
-                  <!-- 🌟 修复：换成 AutoCompleteBox 以支持 Text 属性 -->
+                  <!-- 换成 AutoCompleteBox 以支持 Text 属性 -->
                   <AutoCompleteBox x:Name="JavaPathComboBox" Height="36" MinimumPrefixLength="0" FilterMode="Contains" Watermark="选择或输入 java.exe" FontSize="14"/>
                 </StackPanel>
               </StackPanel>
@@ -113,7 +114,8 @@
           <Border Grid.Row="1" Classes="Card">
             <ListBox x:Name="ModResultsList">
               <ListBox.ItemTemplate>
-                <DataTemplate>
+                <!-- 🌟 核心修复：加上 x:DataType 告诉编译器绑定的类型 -->
+                <DataTemplate x:DataType="local:ModSearchResult">
                   <Grid ColumnDefinitions="*,Auto" Margin="0,5">
                     <StackPanel Grid.Column="0" Spacing="5">
                       <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="15" Foreground="#E0E0E0"/>
