@@ -10,6 +10,7 @@ namespace MCLauncher;
 public class ModrinthService
 {
     private readonly HttpClient _http;
+
     public ModrinthService()
     {
         _http = new HttpClient();
@@ -18,26 +19,40 @@ public class ModrinthService
 
     public async Task<List<ModSearchResult>> SearchModsAsync(string query, string mcVersion, string loader)
     {
-        // facets 格式: [["project_type:mod"],["versions:1.20.1"],["categories:forge"]]
-        var facets = $"[[\"project_type:mod\"],[\"versions:{mcVersion}\"],[\"categories:{loader}\"]]";
-        var url = $"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(query)}&facets={Uri.EscapeDataString(facets)}&limit=20";
+        var lowerQuery = (query ?? "").ToLowerInvariant();
+        var lowerLoader = (loader ?? "").ToLowerInvariant();
 
-        var json = await _http.GetStringAsync(url);
-        var result = JsonSerializer.Deserialize<ModrinthSearchResponse>(json);
-        return result?.Hits ?? new List<ModSearchResult>();
+        // 🌟 核心修复：将 categories 改为 loaders
+        var facets = $"[[\"project_type:mod\"],[\"versions:{mcVersion}\"],[\"loaders:{lowerLoader}\"]]";
+
+        var url = $"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(lowerQuery)}&facets={Uri.EscapeDataString(facets)}&limit=30";
+
+        try
+        {
+            var json = await _http.GetStringAsync(url);
+            var result = JsonSerializer.Deserialize<ModrinthSearchResponse>(json);
+            return result?.Hits ?? new List<ModSearchResult>();
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"Modrinth API 请求失败: {ex.Message}");
+        }
     }
 
     public async Task DownloadModAsync(ModSearchResult mod, string mcVersion, string loader, string modsDir)
     {
-        // 获取下载直链
-        var url = $"https://api.modrinth.com/v2/project/{mod.ProjectId}/version?game_versions=[\"{mcVersion}\"]&loaders=[\"{loader}\"]";
+        var lowerLoader = (loader ?? "").ToLowerInvariant();
+
+        var url = $"https://api.modrinth.com/v2/project/{mod.ProjectId}/version?game_versions=[\"{mcVersion}\"]&loaders=[\"{lowerLoader}\"]";
+
         var json = await _http.GetStringAsync(url);
         var versions = JsonSerializer.Deserialize<List<ModrinthVersion>>(json);
 
-        if (versions == null || versions.Count == 0) throw new Exception("未找到适配该版本的下载");
+        if (versions == null || versions.Count == 0)
+            throw new Exception($"该模组暂不支持 Minecraft {mcVersion} 的 {loader} 版本");
 
-        var latest = versions[0]; // 取最新版
-        var file = latest.Files[0]; // 取主文件
+        var latest = versions[0];
+        var file = latest.Files[0];
 
         Directory.CreateDirectory(modsDir);
         var filePath = Path.Combine(modsDir, file.Filename);
