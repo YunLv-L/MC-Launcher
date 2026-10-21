@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -81,6 +82,27 @@ public partial class MainWindow : Window
 
     private string GetSelectedVersion() => VersionComboBox.Text?.Trim() ?? "";
 
+    // 🌟 新增：把带加载器后缀的版本号还原为纯原版号
+    private string ExtractMcVersion(string versionId)
+    {
+        if (string.IsNullOrEmpty(versionId)) return "";
+
+        // 1. 处理 Forge (如 1.20.1-forge-47.2.0)
+        if (versionId.Contains("-forge-"))
+            return versionId.Split("-forge-")[0];
+
+        // 2. 处理 Fabric (如 fabric-loader-0.15.11-1.20.1)
+        if (versionId.Contains("fabric-loader-"))
+            return versionId.Split('-').Last();
+
+        // 3. 处理 NeoForge (如 1.20.1-neoforge-47.1.106)
+        if (versionId.Contains("-neoforge-"))
+            return versionId.Split("-neoforge-")[0];
+
+        // 如果本来就是原版，直接返回
+        return versionId;
+    }
+
     private void OnVersionSelectionChanged(object? sender, SelectionChangedEventArgs e) => UpdateHomeVersionText();
 
     private void UpdateHomeVersionText()
@@ -157,7 +179,9 @@ public partial class MainWindow : Window
     {
         var version = GetSelectedVersion();
         var username = UsernameInput.Text?.Trim() ?? "Steve";
-        var javaPath = JavaPathComboBox.Text?.Trim() ?? "java";
+
+        // 🌟 双保险：剥离可能误带的首尾引号，防止路径报错
+        var javaPath = (JavaPathComboBox.Text?.Trim() ?? "java").Trim('"');
 
         if (string.IsNullOrEmpty(version)) { AddLog("主页", "请选择版本"); return; }
 
@@ -214,17 +238,20 @@ public partial class MainWindow : Window
     private async void OnSearchModClick(object? sender, RoutedEventArgs e)
     {
         var query = ModSearchInput.Text?.Trim() ?? "";
-        var version = GetSelectedVersion();
-        if (string.IsNullOrEmpty(version)) { AddLog("主页", "请先在下载页选择游戏版本"); return; }
+        var rawVersion = GetSelectedVersion();
 
+        if (string.IsNullOrEmpty(rawVersion)) { AddLog("主页", "请先在下载页选择游戏版本"); return; }
+
+        // 🌟 核心修复：提取纯净的 MC 版本号 (例如从 1.20.1-forge-47.2.0 提取出 1.20.1)
+        var pureMcVersion = ExtractMcVersion(rawVersion);
         var loader = (ModLoaderCombo.SelectedItem as ComboBoxItem)?.Content?.ToString()?.ToLower() ?? "forge";
 
         SearchModButton.IsEnabled = false;
-        AddLog("主页", $"正在搜索 Modrinth (查询: {query}, 版本: {version}, 加载器: {loader})...");
+        AddLog("主页", $"正在搜索 Modrinth (查询: {query}, 游戏版本: {pureMcVersion}, 加载器: {loader})...");
 
         try
         {
-            var results = await _modrinthService.SearchModsAsync(query, version, loader);
+            var results = await _modrinthService.SearchModsAsync(query, pureMcVersion, loader);
             ModResultsList.ItemsSource = results;
             AddLog("主页", $"搜索完成，找到 {results.Count} 个结果。");
         }
@@ -236,17 +263,19 @@ public partial class MainWindow : Window
     {
         if (sender is not Button btn || btn.Tag is not ModSearchResult mod) return;
 
-        var version = GetSelectedVersion();
+        var rawVersion = GetSelectedVersion();
+        // 🌟 核心修复：下载时也要用纯净版本号
+        var pureMcVersion = ExtractMcVersion(rawVersion);
         var loader = (ModLoaderCombo.SelectedItem as ComboBoxItem)?.Content?.ToString()?.ToLower() ?? "forge";
         var modsDir = Path.Combine(AppContext.BaseDirectory, "minecraft", "mods");
 
         btn.Content = "下载中...";
         btn.IsEnabled = false;
-        AddLog("主页", $"正在安装模组: {mod.Title} ...");
+        AddLog("主页", $"正在安装模组: {mod.Title} (匹配版本: {pureMcVersion})...");
 
         try
         {
-            await _modrinthService.DownloadModAsync(mod, version, loader, modsDir);
+            await _modrinthService.DownloadModAsync(mod, pureMcVersion, loader, modsDir);
             AddLog("主页", $"✅ 模组 {mod.Title} 安装成功！(已保存至 mods 文件夹)");
             btn.Content = "已安装";
         }
