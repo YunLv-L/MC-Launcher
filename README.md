@@ -69,6 +69,3 @@ dotnet publish MCLauncher.csproj -c Release -r win-x64 --self-contained true -p:
 ## 📄 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。
-2. 如果你在本地编译通过了，或者跑通了 GitHub Actions，别忘了在你的 README 里多截几张漂亮的 UI 图放进去，这会极大地增加项目的吸引力！
-
-推送到 GitHub 后，如果你的 Actions 跑挂了（比如文件名没对上、缩进报错），直接把红色的报错日志或者截图发我，我们马上修！
