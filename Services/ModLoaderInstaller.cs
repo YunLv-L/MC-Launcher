@@ -23,6 +23,7 @@ public class ModLoaderInstaller
         _http.DefaultRequestHeaders.Add("User-Agent", "MC-Launcher/0.1");
     }
 
+    // ================== Fabric 安装 ==================
     public async Task<string> InstallFabricAsync(string mcVersion, string? specificLoaderVersion = null)
     {
         _log.Report("正在获取 Fabric 元数据...");
@@ -77,6 +78,7 @@ public class ModLoaderInstaller
         return versionId;
     }
 
+    // ================== Forge 安装 (通过调用官方 Installer) ==================
     public async Task<string> InstallForgeAsync(string mcVersion, string forgeVersion, string javaPath)
     {
         var forgeFullVersion = $"{mcVersion}-{forgeVersion}";
@@ -84,6 +86,7 @@ public class ModLoaderInstaller
         var installerUrl = $"https://maven.minecraftforge.net/net/minecraftforge/forge/{forgeFullVersion}/{installerJarName}";
         var installerPath = Path.Combine(_baseDir, installerJarName);
 
+        // 1. 下载 Installer
         if (!File.Exists(installerPath))
         {
             _log.Report($"正在下载 Forge Installer: {installerJarName}");
@@ -92,6 +95,35 @@ public class ModLoaderInstaller
             _log.Report("Forge Installer 下载完成。");
         }
 
+        // ================== 关键修复：生成 launcher_profiles.json ==================
+        var profilePath = Path.Combine(_baseDir, "launcher_profiles.json");
+        if (!File.Exists(profilePath))
+        {
+            _log.Report("未找到 launcher_profiles.json，正在生成...");
+            var defaultProfile = new
+            {
+                profiles = new Dictionary<string, object>
+                {
+                    ["MC-Launcher"] = new
+                    {
+                        name = "MC-Launcher",
+                        type = "custom",
+                        gameDir = _baseDir,
+                        lastVersionId = mcVersion,
+                        created = DateTime.UtcNow.ToString("o"),
+                        lastUsed = DateTime.UtcNow.ToString("o")
+                    }
+                },
+                clientToken = Guid.NewGuid().ToString("N"),
+                selectedProfile = "MC-Launcher"
+            };
+            var profileJson = JsonSerializer.Serialize(defaultProfile, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(profilePath, profileJson);
+            _log.Report("launcher_profiles.json 生成完毕。");
+        }
+        // =========================================================================
+
+        // 2. 执行静默安装
         _log.Report($"正在启动 Forge 安装程序 (静默模式)...");
         var psi = new ProcessStartInfo
         {
