@@ -45,7 +45,8 @@
                 </StackPanel>
                 <StackPanel Spacing="6">
                   <TextBlock Text="Java 路径" FontSize="13" Foreground="#AAAAAA"/>
-                  <ComboBox x:Name="JavaPathComboBox" Height="36" IsEditable="True" Watermark="选择或输入 java.exe" FontSize="14"/>
+                  <!-- 🌟 修复：换成 AutoCompleteBox 以支持 Text 属性 -->
+                  <AutoCompleteBox x:Name="JavaPathComboBox" Height="36" MinimumPrefixLength="0" FilterMode="Contains" Watermark="选择或输入 java.exe" FontSize="14"/>
                 </StackPanel>
               </StackPanel>
               <Button Grid.Row="4" x:Name="LaunchButton" Classes="Primary" Content="▶  启动游戏" Click="OnLaunchClick" FontSize="18" Height="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>

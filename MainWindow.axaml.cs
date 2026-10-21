@@ -39,8 +39,16 @@ public partial class MainWindow : Window
         AddLog("主页", "正在扫描本地 Java 环境...");
         var javas = await _javaService.FindJavaInstallationsAsync();
         JavaPathComboBox.ItemsSource = javas;
-        if (javas.Count > 0) JavaPathComboBox.SelectedIndex = 0;
-        else JavaPathComboBox.Text = "java";
+
+        if (javas.Count > 0)
+        {
+            JavaPathComboBox.Text = javas[0];
+        }
+        else
+        {
+            JavaPathComboBox.Text = "java";
+        }
+
         AddLog("主页", $"Java 扫描完成，找到 {javas.Count} 个。");
     }
 
@@ -160,7 +168,6 @@ public partial class MainWindow : Window
 
         try
         {
-            // 传入内存配置
             var service = new LaunchService(baseDir, log, status);
             await service.LaunchAsync(version, username, javaPath, _settings.MaxMemoryMB);
         }
