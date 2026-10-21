@@ -53,11 +53,9 @@ public class LaunchService
             }
         }
 
-        // 原版 Jar
         var clientJar = Path.Combine(_baseDir, "versions", versionChain.Last().Id, $"{versionChain.Last().Id}.jar");
         if (File.Exists(clientJar)) classPath.Add(clientJar);
 
-        // Forge 等安装器生成的 Wrapper Jar
         if (versionId != versionChain.Last().Id)
         {
             var subJar = Path.Combine(_baseDir, "versions", versionId, $"{versionId}.jar");
@@ -72,7 +70,7 @@ public class LaunchService
             "-Xmx2G", "-Xms1G",
             "-Djava.library.path=" + nativesDir,
 
-            // 🌟 核心修复：添加允许 Forge 反射访问的参数 (兼容 Java 17+)
+            // Forge 反射兼容参数 (Java 17+)
             "--add-opens", "java.base/java.lang.invoke=ALL-UNNAMED",
             "--add-opens", "java.base/java.lang=ALL-UNNAMED",
             "--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED",
@@ -92,19 +90,60 @@ public class LaunchService
         _status.Report("正在启动游戏...");
         _log.Report($"拉起 Java 进程，主类: {mergedDetail.MainClass}");
 
+        // 🌟 核心改造：拦截标准输出和错误输出，并隐藏黑框
         var psi = new ProcessStartInfo
         {
             FileName = javaPath,
             Arguments = string.Join(" ", args.Select(a => a.Contains(" ") ? $"\"{a}\"" : a)),
             UseShellExecute = false,
+            CreateNoWindow = true, // 隐藏原生的控制台黑框
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
             WorkingDirectory = _baseDir
         };
 
-        var process = Process.Start(psi);
-        if (process == null) throw new Exception("启动进程失败");
+        using var process = new Process { StartInfo = psi };
+        var crashLog = new List<string>();
+
+        // 捕获日志
+        process.OutputDataReceived += (s, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                _log.Report($"[Game] {e.Data}");
+                crashLog.Add(e.Data);
+            }
+        };
+        process.ErrorDataReceived += (s, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                _log.Report($"[Game Error] {e.Data}");
+                crashLog.Add("[Error] " + e.Data);
+            }
+        };
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
         await process.WaitForExitAsync();
-        _status.Report("游戏已退出");
+
+        // 检查退出状态
+        if (process.ExitCode != 0)
+        {
+            _status.Report($"游戏异常退出 (代码: {process.ExitCode})");
+            _log.Report($"❌ 游戏崩溃了！详细日志已保存到 crash-report.txt");
+
+            // 将报错写入文件，方便用户复制发给开发者
+            var crashPath = Path.Combine(AppContext.BaseDirectory, "crash-report.txt");
+            await File.WriteAllLinesAsync(crashPath, crashLog);
+        }
+        else
+        {
+            _status.Report("游戏已正常退出");
+            _log.Report("游戏进程正常结束。");
+        }
     }
 
     private async Task<List<VersionDetail>> LoadVersionChainAsync(string versionId)
