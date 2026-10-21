@@ -58,12 +58,11 @@
 
           <!-- 左侧：启动控制台 -->
           <Border Grid.Column="0" Classes="Card">
-            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="20">
-              <TextBlock Grid.Row="0" Text="启动控制台" FontSize="18" FontWeight="Bold" Foreground="#E0E0E0"/>
+            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+              <TextBlock Grid.Row="0" Text="启动控制台" FontSize="18" FontWeight="Bold" Foreground="#E0E0E0" Margin="0,0,0,20"/>
 
-              <StackPanel Grid.Row="1" Spacing="10">
+              <StackPanel Grid.Row="1" Spacing="10" Margin="0,0,0,20">
                 <TextBlock Text="当前选择的版本" FontSize="13" Foreground="#AAAAAA"/>
-                <!-- 这个框只用于展示同步过来的版本，只读 -->
                 <TextBlock x:Name="HomeSelectedVersionText" Text="尚未选择版本" FontSize="16" FontWeight="SemiBold" Foreground="#0078D4"/>
               </StackPanel>
 
@@ -85,8 +84,8 @@
 
           <!-- 右侧：日志区 -->
           <Border Grid.Column="2" Classes="Card">
-            <Grid RowDefinitions="Auto,*" RowSpacing="15">
-              <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <Grid RowDefinitions="Auto,*">
+              <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,15">
                 <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪" FontSize="14" FontWeight="SemiBold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
               </Grid>
               <Border Grid.Row="1" Background="#1E1E1E" CornerRadius="6" BorderThickness="1" BorderBrush="#333">
@@ -103,8 +102,8 @@
 
           <!-- 顶部控制栏 -->
           <Border Grid.Row="0" Classes="Card" Margin="0,0,0,15">
-            <Grid RowDefinitions="Auto,Auto" RowSpacing="15">
-              <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+            <Grid RowDefinitions="Auto,Auto">
+              <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="0,0,0,15">
                 <TextBlock Grid.Column="0" Text="游戏版本" VerticalAlignment="Center" FontSize="14" Foreground="#AAAAAA" Margin="0,0,10,0"/>
                 <AutoCompleteBox Grid.Column="1" x:Name="VersionComboBox" Height="36" MaxDropDownHeight="400" Watermark="请选择或输入版本" FontSize="14" MinimumPrefixLength="0" FilterMode="Contains" SelectionChanged="OnVersionSelectionChanged"/>
                 <Button Grid.Column="2" x:Name="RefreshVersionsButton" Content="刷新列表" Click="OnRefreshVersionsClick" Background="#444444" Foreground="White" Padding="15,0" Height="36" CornerRadius="4" Margin="10,0,0,0"/>
@@ -123,7 +122,7 @@
             </Grid>
           </Border>
 
-          <!-- 下方也可以放日志，也可以留空（PCL2 下载页往往有版本列表，这里为了简单复用日志框） -->
+          <!-- 下方下载日志框 -->
           <Border Grid.Row="1" Classes="Card">
             <Grid RowDefinitions="Auto,*">
               <TextBlock Grid.Row="0" Text="下载日志" FontSize="16" FontWeight="Bold" Foreground="#E0E0E0" Margin="0,0,0,10"/>
