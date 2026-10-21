@@ -6,7 +6,10 @@ namespace MCLauncher;
 
 public class AppSettings
 {
-    public int MaxThreads { get; set; } = 16; // 默认 16 线程
+    public int MaxThreads { get; set; } = 16;
+    public int MaxMemoryMB { get; set; } = 4096; // 默认 4G 内存
+    public string LastUsername { get; set; } = "Steve";
+    public string LastVersion { get; set; } = "";
 
     private static readonly string ConfigPath = Path.Combine(AppContext.BaseDirectory, "config.json");
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
@@ -21,7 +24,7 @@ public class AppSettings
                 return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
             }
         }
-        catch { /* 读取失败则返回默认 */ }
+        catch { }
         return new AppSettings();
     }
 
@@ -32,6 +35,6 @@ public class AppSettings
             var json = JsonSerializer.Serialize(this, JsonOpts);
             File.WriteAllText(ConfigPath, json);
         }
-        catch { /* 忽略写入异常 */ }
+        catch { }
     }
 }

@@ -22,7 +22,8 @@ public class LaunchService
         _status = status;
     }
 
-    public async Task LaunchAsync(string versionId, string username, string javaPath)
+    // 修改方法签名，接收最大内存 (MB)
+    public async Task LaunchAsync(string versionId, string username, string javaPath, int maxMemoryMB)
     {
         _status.Report("正在准备启动环境...");
 
@@ -70,7 +71,7 @@ public class LaunchService
         var assetsDir = Path.Combine(_baseDir, "assets");
         var libDir = Path.Combine(_baseDir, "libraries").Replace("\\", "/");
 
-        // 1. 解析 JVM 参数
+        // 1. 解析 JSON 里的 JVM 参数
         if (mergedDetail.Arguments?.Jvm != null)
         {
             foreach (var item in mergedDetail.Arguments.Jvm)
@@ -79,6 +80,7 @@ public class LaunchService
                 {
                     var arg = elem.GetString()!;
                     if (arg == "-cp" || arg == "${classpath}") continue;
+                    if (arg.StartsWith("-Xmx") || arg.StartsWith("-Xms")) continue; // 过滤掉 JSON 里原有的内存设置，使用用户的配置
 
                     arg = arg.Replace("${library_directory}", libDir)
                              .Replace("${version_name}", versionId)
@@ -91,19 +93,17 @@ public class LaunchService
             }
         }
 
-        // 兜底内存参数
-        if (!args.Any(a => a.StartsWith("-Xmx")))
-        {
-            args.Add("-Xmx2G");
-            args.Add("-Xms1G");
-        }
+        // 2. 加入用户配置的内存参数
+        args.Add($"-Xmx{maxMemoryMB}M");
+        args.Add($"-Xms{Math.Min(maxMemoryMB, 1024)}M");
 
+        // 3. 加入必须的 Natives 路径和 ClassPath
         args.Add("-Djava.library.path=" + nativesDir);
         args.Add("-cp");
         args.Add(cpString);
         args.Add(mergedDetail.MainClass ?? "net.minecraft.client.main.Main");
 
-        // 2. 解析 Game 参数 (核心修复：读取 Forge 自带的 game 参数，不再手动硬编码)
+        // 4. 解析 JSON 里的 Game 参数 (兼容 Forge 和原版)
         bool hasGameArgs = false;
         if (mergedDetail.Arguments?.Game != null && mergedDetail.Arguments.Game.Count > 0)
         {
@@ -119,7 +119,7 @@ public class LaunchService
                              .Replace("${assets_root}", assetsDir)
                              .Replace("${assets_index_name}", mergedDetail.AssetIndex?.Id ?? "legacy")
                              .Replace("${auth_uuid}", uuid)
-                             .Replace("${auth_access_token}", "0") // 离线模式 Token
+                             .Replace("${auth_access_token}", "0")
                              .Replace("${user_type}", "legacy")
                              .Replace("${version_type}", "release");
 
@@ -129,7 +129,7 @@ public class LaunchService
             }
         }
 
-        // 3. 如果没有 game 参数 (例如极老的版本)，使用基础兜底参数
+        // 5. 兜底：如果 JSON 没有提供 Game 参数，手动拼装
         if (!hasGameArgs)
         {
             args.AddRange(new[] {
@@ -142,8 +142,9 @@ public class LaunchService
         }
 
         _status.Report("正在启动游戏...");
-        _log.Report($"拉起 Java 进程，主类: {mergedDetail.MainClass}");
+        _log.Report($"拉起 Java 进程，主类: {mergedDetail.MainClass} (分配内存: {maxMemoryMB}MB)");
 
+        // 6. 启动进程并捕获日志
         var psi = new ProcessStartInfo
         {
             FileName = javaPath,
@@ -181,6 +182,7 @@ public class LaunchService
 
         await process.WaitForExitAsync();
 
+        // 7. 处理退出状态
         if (process.ExitCode != 0)
         {
             _status.Report($"游戏异常退出 (代码: {process.ExitCode})");
@@ -227,7 +229,7 @@ public class LaunchService
             MainClass = chain.Last().MainClass ?? chain.First().MainClass,
             AssetIndex = chain.First().AssetIndex,
             Libraries = new List<Library>(),
-            Arguments = new Arguments // 确保初始化
+            Arguments = new Arguments
             {
                 Jvm = new List<object>(),
                 Game = new List<object>()
@@ -250,7 +252,6 @@ public class LaunchService
                 foreach (var jvmArg in detail.Arguments.Jvm) result.Arguments.Jvm.Add(jvmArg);
             }
 
-            // 🌟 核心修复：合并 Game 参数
             if (detail.Arguments?.Game != null)
             {
                 foreach (var gameArg in detail.Arguments.Game) result.Arguments.Game.Add(gameArg);

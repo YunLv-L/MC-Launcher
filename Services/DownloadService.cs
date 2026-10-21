@@ -12,8 +12,9 @@ namespace MCLauncher;
 
 public class DownloadService
 {
-    private const string ManifestUrl = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-    private const string ResourcesBaseUrl = "https://resources.download.minecraft.net";
+    // 🌟 核心：替换为 BMCLAPI 国内镜像源
+    private const string ManifestUrl = "https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json";
+    private const string ResourcesBaseUrl = "https://bmclapi2.bangbang93.com/assets";
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     private readonly HttpClient _http;
@@ -135,13 +136,13 @@ public class DownloadService
 
     private async Task<VersionDetail> GetVersionDetailAsync(string versionId, CancellationToken ct)
     {
+        // BMCLAPI 会解析官方清单
         var manifestJson = await _http.GetStringAsync(ManifestUrl, ct);
         var manifest = JsonSerializer.Deserialize<VersionManifest>(manifestJson, JsonOpts)
             ?? throw new Exception("版本清单解析失败");
 
         var versionEntry = manifest.Versions.FirstOrDefault(v => v.Id == versionId);
 
-        // 如果官方清单里没有（比如 Forge 或 Fabric 版本），直接读本地 JSON
         if (versionEntry == null)
         {
             var localJsonPath = Path.Combine(_baseDir, "versions", versionId, $"{versionId}.json");
@@ -154,7 +155,9 @@ public class DownloadService
         }
 
         _log.Report($"获取版本 {versionId} 详情...");
-        var versionJson = await _http.GetStringAsync(versionEntry.Url, ct);
+        // 如果官方 URL 是 piston-meta，替换为 BMCLAPI 镜像
+        var url = versionEntry.Url.Replace("piston-meta.mojang.com", "bmclapi2.bangbang93.com");
+        var versionJson = await _http.GetStringAsync(url, ct);
         var detail = JsonSerializer.Deserialize<VersionDetail>(versionJson, JsonOpts)
             ?? throw new Exception("版本详情解析失败");
 
@@ -186,12 +189,11 @@ public class DownloadService
             }
             else
             {
-                _log.Report($"本地未找到父版本 {current.InheritsFrom} 的 JSON，正在从网络获取...");
                 current = await GetVersionDetailAsync(current.InheritsFrom, ct);
             }
         }
 
-        versionChain.Reverse(); // 原版在前，子版本在后
+        versionChain.Reverse();
         var addedLibs = new HashSet<string>();
 
         foreach (var ver in versionChain)
@@ -199,7 +201,8 @@ public class DownloadService
             if (ver.Downloads?.Client != null)
             {
                 var jarPath = Path.Combine(_baseDir, "versions", ver.Id, $"{ver.Id}.jar");
-                allBaseTasks.Add((ver.Downloads.Client.Url, jarPath, ver.Downloads.Client.Sha1));
+                var url = ver.Downloads.Client.Url.Replace("piston-data.mojang.com", "bmclapi2.bangbang93.com");
+                allBaseTasks.Add((url, jarPath, ver.Downloads.Client.Sha1));
             }
 
             foreach (var lib in ver.Libraries.Where(IsAllowed))
@@ -208,14 +211,18 @@ public class DownloadService
                 var a = lib.Downloads.Artifact;
                 if (addedLibs.Add(lib.Name))
                 {
-                    allBaseTasks.Add((a.Url, Path.Combine(_baseDir, "libraries", a.Path), a.Sha1));
+                    var url = a.Url.Replace("libraries.minecraft.net", "bmclapi2.bangbang93.com/maven")
+                                   .Replace("maven.minecraftforge.net", "bmclapi2.bangbang93.com/maven")
+                                   .Replace("maven.fabricmc.net", "bmclapi2.bangbang93.com/maven");
+                    allBaseTasks.Add((url, Path.Combine(_baseDir, "libraries", a.Path), a.Sha1));
                 }
             }
 
             if (ver.AssetIndex != null && assetTasks.Count == 0)
             {
                 var idxPath = Path.Combine(_baseDir, "assets", "indexes", $"{ver.AssetIndex.Id}.json");
-                allBaseTasks.Add((ver.AssetIndex.Url, idxPath, ver.AssetIndex.Sha1));
+                var url = ver.AssetIndex.Url.Replace("piston-meta.mojang.com", "bmclapi2.bangbang93.com");
+                allBaseTasks.Add((url, idxPath, ver.AssetIndex.Sha1));
 
                 if (File.Exists(idxPath))
                 {
@@ -245,8 +252,7 @@ public class DownloadService
         if (File.Exists(path) && expectedSha1 != null)
         {
             var existSha1 = await ComputeSha1Async(path);
-            if (string.Equals(existSha1, expectedSha1, StringComparison.OrdinalIgnoreCase))
-                return;
+            if (string.Equals(existSha1, expectedSha1, StringComparison.OrdinalIgnoreCase)) return;
         }
 
         var tempPath = path + ".tmp";
@@ -289,9 +295,7 @@ public class DownloadService
         bool allowed = false;
         foreach (var rule in lib.Rules)
         {
-            bool match = rule.Os == null
-                || (rule.Os.Name == "windows"
-                    && (rule.Os.Arch == null || rule.Os.Arch == "x86_64"));
+            bool match = rule.Os == null || (rule.Os.Name == "windows" && (rule.Os.Arch == null || rule.Os.Arch == "x86_64"));
             if (match) allowed = rule.Action == "allow";
         }
         return allowed;
