@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -25,27 +24,20 @@ public class ModrinthService
         var lowerQuery = (query ?? "").ToLowerInvariant();
         var lowerLoader = (loader ?? "").ToLowerInvariant();
 
-        // 🌟 核心修复：改用 POST 请求，将参数放入 JSON Body，彻底避开 URL 编码地狱
-        var urlString = "https://api.modrinth.com/v2/search";
+        // 1. 构造原始的 facets 字符串
+        var rawFacets = $"[[\"project_type:mod\"],[\"versions:{mcVersion}\"],[\"loaders:{lowerLoader}\"]]";
 
-        var requestBody = new
-        {
-            query = lowerQuery,
-            facets = new List<List<string>>
-            {
-                new() { "project_type:mod" },
-                new() { $"versions:{mcVersion}" },
-                new() { $"loaders:{lowerLoader}" }
-            },
-            limit = 30
-        };
+        // 2. 🌟 核心修复：只将双引号转义为 %22，方括号保持原样
+        var encodedFacets = rawFacets.Replace("\"", "%22");
 
-        var jsonBody = JsonSerializer.Serialize(requestBody);
-        var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        // 3. 拼装成和你 curl 测试一模一样的 URL
+        var urlString = $"https://api.modrinth.com/v2/search?query={Uri.EscapeDataString(lowerQuery)}&facets={encodedFacets}&limit=30";
 
         try
         {
-            using var response = await _http.PostAsync(urlString, content);
+            // 4. 使用 HttpRequestMessage 发送 GET 请求
+            using var request = new HttpRequestMessage(HttpMethod.Get, urlString);
+            using var response = await _http.SendAsync(request);
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
@@ -62,13 +54,10 @@ public class ModrinthService
     {
         var lowerLoader = (loader ?? "").ToLowerInvariant();
 
-        // 获取下载直链的 GET 请求
-        var urlString = $"https://api.modrinth.com/v2/project/{mod.ProjectId}/version?game_versions=[\"{mcVersion}\"]&loaders=[\"{lowerLoader}\"]";
+        // 下载接口的 GET 请求 (与 curl 逻辑一致)
+        var urlString = $"https://api.modrinth.com/v2/project/{mod.ProjectId}/version?game_versions=[%22{mcVersion}%22]&loaders=[%22{lowerLoader}%22]";
 
-        // 依然使用 DangerousDisablePathAndQueryCanonicalization 防止底层乱改
-        var uri = new Uri(urlString, new UriCreationOptions { DangerousDisablePathAndQueryCanonicalization = true });
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        using var request = new HttpRequestMessage(HttpMethod.Get, urlString);
         using var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
 
