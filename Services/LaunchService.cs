@@ -65,20 +65,47 @@ public class LaunchService
         var cpString = string.Join(";", classPath);
 
         _status.Report("正在拼装启动参数...");
-        var args = new List<string>
+        var args = new List<string>();
+
+        // 🌟 核心改造：完全解析官方 JSON 里的 arguments.jvm
+        var libDir = Path.Combine(_baseDir, "libraries").Replace("\\", "/");
+        if (mergedDetail.Arguments?.Jvm != null)
         {
-            "-Xmx2G", "-Xms1G",
-            "-Djava.library.path=" + nativesDir,
+            foreach (var item in mergedDetail.Arguments.Jvm)
+            {
+                if (item is JsonElement elem && elem.ValueKind == JsonValueKind.String)
+                {
+                    var arg = elem.GetString()!;
 
-            // Forge 反射兼容参数 (Java 17+)
-            "--add-opens", "java.base/java.lang.invoke=ALL-UNNAMED",
-            "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-            "--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED",
+                    // 跳过 classpath 相关的参数，因为我们在外面手动拼装了
+                    if (arg == "-cp" || arg == "${classpath}") continue;
 
-            "-cp", cpString,
-            mergedDetail.MainClass ?? "net.minecraft.client.main.Main",
-        };
+                    // 替换官方占位符
+                    arg = arg.Replace("${library_directory}", libDir)
+                             .Replace("${version_name}", versionId)
+                             .Replace("${classpath_separator}", ";")
+                             .Replace("${launcher_name}", "MC-Launcher")
+                             .Replace("${launcher_version}", "0.1");
 
+                    args.Add(arg);
+                }
+            }
+        }
+
+        // 如果 JSON 里没有提供 JVM 参数（比如原版 1.16 及以下），则使用基础兜底参数
+        if (!args.Any(a => a.StartsWith("-Xmx")))
+        {
+            args.Add("-Xmx2G");
+            args.Add("-Xms1G");
+        }
+
+        // 加入必须的 Natives 路径和 ClassPath
+        args.Add("-Djava.library.path=" + nativesDir);
+        args.Add("-cp");
+        args.Add(cpString);
+        args.Add(mergedDetail.MainClass ?? "net.minecraft.client.main.Main");
+
+        // 加入游戏参数
         args.AddRange(new[] {
             "--username", username, "--version", versionId,
             "--gameDir", _baseDir, "--assetsDir", Path.Combine(_baseDir, "assets"),
@@ -90,13 +117,12 @@ public class LaunchService
         _status.Report("正在启动游戏...");
         _log.Report($"拉起 Java 进程，主类: {mergedDetail.MainClass}");
 
-        // 🌟 核心改造：拦截标准输出和错误输出，并隐藏黑框
         var psi = new ProcessStartInfo
         {
             FileName = javaPath,
             Arguments = string.Join(" ", args.Select(a => a.Contains(" ") ? $"\"{a}\"" : a)),
             UseShellExecute = false,
-            CreateNoWindow = true, // 隐藏原生的控制台黑框
+            CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             WorkingDirectory = _baseDir
@@ -105,7 +131,6 @@ public class LaunchService
         using var process = new Process { StartInfo = psi };
         var crashLog = new List<string>();
 
-        // 捕获日志
         process.OutputDataReceived += (s, e) =>
         {
             if (!string.IsNullOrEmpty(e.Data))
@@ -129,13 +154,11 @@ public class LaunchService
 
         await process.WaitForExitAsync();
 
-        // 检查退出状态
         if (process.ExitCode != 0)
         {
             _status.Report($"游戏异常退出 (代码: {process.ExitCode})");
             _log.Report($"❌ 游戏崩溃了！详细日志已保存到 crash-report.txt");
 
-            // 将报错写入文件，方便用户复制发给开发者
             var crashPath = Path.Combine(AppContext.BaseDirectory, "crash-report.txt");
             await File.WriteAllLinesAsync(crashPath, crashLog);
         }
@@ -176,7 +199,12 @@ public class LaunchService
             Id = chain.Last().Id,
             MainClass = chain.Last().MainClass ?? chain.First().MainClass,
             AssetIndex = chain.First().AssetIndex,
-            Libraries = new List<Library>()
+            Libraries = new List<Library>(),
+            Arguments = new Arguments // 确保 Arguments 不为 null
+            {
+                Jvm = new List<object>(),
+                Game = new List<object>()
+            }
         };
 
         var seenLibs = new HashSet<string>();
@@ -187,6 +215,15 @@ public class LaunchService
                 if (seenLibs.Add(lib.Name))
                 {
                     result.Libraries.Add(lib);
+                }
+            }
+
+            // 合并 JVM 参数 (原版在前，Forge 在后)
+            if (detail.Arguments?.Jvm != null)
+            {
+                foreach (var jvmArg in detail.Arguments.Jvm)
+                {
+                    result.Arguments.Jvm.Add(jvmArg);
                 }
             }
         }
