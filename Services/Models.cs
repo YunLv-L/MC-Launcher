@@ -10,14 +10,15 @@ public class VersionManifest
 public class VersionEntry
 {
     public string Id { get; set; } = "";
+    public string Type { get; set; } = ""; // 新增：版本类型（release, snapshot, old_alpha...）
     public string Url { get; set; } = "";
 }
 
 public class VersionDetail
 {
     public string Id { get; set; } = "";
-    public string? InheritsFrom { get; set; } // 继承的父版本
-    public string? MainClass { get; set; }    // 覆盖的主类
+    public string? InheritsFrom { get; set; }
+    public string? MainClass { get; set; }
     public DownloadsInfo? Downloads { get; set; }
     public List<Library> Libraries { get; set; } = new();
     public AssetIndexInfo? AssetIndex { get; set; }

@@ -44,26 +44,47 @@ public partial class MainWindow : Window
             {
                 VersionComboBox.Text = versions[0];
             }
+
+            UpdateHomeVersionText();
+            AddLog("下载", $"✅ 成功加载 {versions.Count} 个版本");
         }
         catch (Exception ex)
         {
-            AppendLog($"❌ 获取版本列表失败: {ex.Message}");
+            AddLog("下载", $"❌ 获取在线版本列表失败，仅显示本地版本。错误: {ex.Message}");
         }
     }
 
     private async void OnRefreshVersionsClick(object? sender, RoutedEventArgs e)
     {
         RefreshVersionsButton.IsEnabled = false;
-        AppendLog("正在刷新版本列表...");
+        AddLog("下载", "正在刷新版本列表...");
         await LoadVersionsAsync();
-        AppendLog("版本列表已刷新。");
+        AddLog("下载", "版本列表已刷新。");
         RefreshVersionsButton.IsEnabled = true;
     }
 
-    // 直接读取 AutoCompleteBox 的 Text 属性即可，非常清爽
     private string GetSelectedVersion()
     {
         return VersionComboBox.Text?.Trim() ?? "";
+    }
+
+    // 当在下载页切换版本时，同步更新主页的文本
+    private void OnVersionSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        UpdateHomeVersionText();
+    }
+
+    private void UpdateHomeVersionText()
+    {
+        var version = GetSelectedVersion();
+        if (string.IsNullOrEmpty(version))
+        {
+            HomeSelectedVersionText.Text = "尚未选择版本";
+        }
+        else
+        {
+            HomeSelectedVersionText.Text = version;
+        }
     }
 
     private void OnSaveSettingsClick(object? sender, RoutedEventArgs e)
@@ -72,7 +93,7 @@ public partial class MainWindow : Window
         {
             _settings.MaxThreads = (int)ThreadInput.Value.Value;
             _settings.Save();
-            AppendLog($"⚙️ 设置已保存，线程数: {_settings.MaxThreads}");
+            AddLog("主页", $"⚙️ 设置已保存，线程数: {_settings.MaxThreads}");
         }
     }
 
@@ -90,7 +111,7 @@ public partial class MainWindow : Window
         var version = GetSelectedVersion();
         if (string.IsNullOrEmpty(version))
         {
-            AppendLog("请选择或输入版本号");
+            AddLog("下载", "请选择或输入版本号");
             return;
         }
 
@@ -99,32 +120,32 @@ public partial class MainWindow : Window
         VerifyButton.IsEnabled = false;
         ProgressBar.Value = 0;
         FileCountText.Text = "";
-        LogList.Items.Clear();
+        DownloadLogList.Items.Clear();
 
         var baseDir = Path.Combine(AppContext.BaseDirectory, "minecraft");
-        var log = new Progress<string>(AppendLog);
+        var log = new Progress<string>(msg => AddLog("下载", msg));
         var progress = new Progress<double>(p => ProgressBar.Value = p * 100);
-        var status = new Progress<string>(s => StatusText.Text = s);
+        var status = new Progress<string>(s => DownloadStatusText.Text = s);
         var fileProgress = new Progress<string>(s => FileCountText.Text = s);
 
         try
         {
             var service = new DownloadService(baseDir, log, progress, status, fileProgress, _settings.MaxThreads);
             await service.DownloadVersionAsync(version, _cts.Token);
-            AppendLog("✅ 下载完成！");
+            AddLog("下载", "✅ 下载完成！");
             FileCountText.Text = "";
-            StatusText.Text = "下载完成";
+            DownloadStatusText.Text = "下载完成";
         }
         catch (OperationCanceledException)
         {
-            AppendLog("⚠️ 下载已取消");
-            StatusText.Text = "已取消";
+            AddLog("下载", "⚠️ 下载已取消");
+            DownloadStatusText.Text = "已取消";
             FileCountText.Text = "";
         }
         catch (Exception ex)
         {
-            AppendLog($"❌ 错误: {ex.Message}");
-            StatusText.Text = "下载失败";
+            AddLog("下载", $"❌ 错误: {ex.Message}");
+            DownloadStatusText.Text = "下载失败";
         }
         finally
         {
@@ -139,19 +160,19 @@ public partial class MainWindow : Window
         if (_cts != null) return;
 
         var version = GetSelectedVersion();
-        if (string.IsNullOrEmpty(version)) { AppendLog("请选择或输入版本号"); return; }
+        if (string.IsNullOrEmpty(version)) { AddLog("下载", "请选择或输入版本号"); return; }
 
         _cts = new CancellationTokenSource();
         VerifyButton.IsEnabled = false;
         DownloadButton.IsEnabled = false;
         ProgressBar.Value = 0;
         FileCountText.Text = "";
-        LogList.Items.Clear();
+        DownloadLogList.Items.Clear();
 
         var baseDir = Path.Combine(AppContext.BaseDirectory, "minecraft");
-        var log = new Progress<string>(AppendLog);
+        var log = new Progress<string>(msg => AddLog("下载", msg));
         var progress = new Progress<double>(p => ProgressBar.Value = p * 100);
-        var status = new Progress<string>(s => StatusText.Text = s);
+        var status = new Progress<string>(s => DownloadStatusText.Text = s);
         var fileProgress = new Progress<string>(s => FileCountText.Text = s);
 
         try
@@ -159,8 +180,8 @@ public partial class MainWindow : Window
             var service = new DownloadService(baseDir, log, progress, status, fileProgress, _settings.MaxThreads);
             await service.VerifyVersionAsync(version, _cts.Token);
         }
-        catch (OperationCanceledException) { AppendLog("⚠️ 校验已取消"); }
-        catch (Exception ex) { AppendLog($"❌ 校验失败: {ex.Message}"); }
+        catch (OperationCanceledException) { AddLog("下载", "⚠️ 校验已取消"); }
+        catch (Exception ex) { AddLog("下载", $"❌ 校验失败: {ex.Message}"); }
         finally
         {
             _cts = null;
@@ -176,11 +197,11 @@ public partial class MainWindow : Window
         var username = UsernameInput.Text?.Trim();
         var javaPath = JavaPathInput.Text?.Trim();
 
-        if (string.IsNullOrEmpty(version)) { AppendLog("请选择或输入版本号"); return; }
+        if (string.IsNullOrEmpty(version)) { AddLog("主页", "请先在下载页选择版本"); return; }
 
         LaunchButton.IsEnabled = false;
         var baseDir = Path.Combine(AppContext.BaseDirectory, "minecraft");
-        var log = new Progress<string>(AppendLog);
+        var log = new Progress<string>(msg => AddLog("主页", msg));
         var status = new Progress<string>(s => StatusText.Text = s);
 
         try
@@ -190,7 +211,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppendLog($"❌ 启动失败: {ex.Message}");
+            AddLog("主页", $"❌ 启动失败: {ex.Message}");
         }
         finally
         {
@@ -205,25 +226,25 @@ public partial class MainWindow : Window
         var mcVersion = GetSelectedVersion();
         if (string.IsNullOrEmpty(mcVersion) || mcVersion.Contains("-forge-") || mcVersion.Contains("fabric-loader"))
         {
-            AppendLog("请先在主页选择一个【纯原版】的 Minecraft 版本（如 1.20.1）");
+            AddLog("主页", "请先在下载页选择一个【纯原版】的 Minecraft 版本（如 1.20.1）");
             return;
         }
 
         var loaderVersion = FabricLoaderVersionInput.Text?.Trim();
         InstallFabricButton.IsEnabled = false;
-        AppendLog($"开始安装 Fabric (基于 MC: {mcVersion})...");
+        AddLog("主页", $"开始安装 Fabric (基于 MC: {mcVersion})...");
 
         try
         {
-            var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(AppendLog));
+            var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(msg => AddLog("主页", msg)));
             var fabricVersionId = await installer.InstallFabricAsync(mcVersion, loaderVersion);
-            AppendLog($"✅ Fabric 安装成功！版本 ID: {fabricVersionId}");
+            AddLog("主页", $"✅ Fabric 安装成功！版本 ID: {fabricVersionId}");
 
             await LoadVersionsAsync(fabricVersionId);
         }
         catch (Exception ex)
         {
-            AppendLog($"❌ Fabric 安装失败: {ex.Message}");
+            AddLog("主页", $"❌ Fabric 安装失败: {ex.Message}");
         }
         finally
         {
@@ -238,31 +259,31 @@ public partial class MainWindow : Window
 
         if (string.IsNullOrEmpty(mcVersion) || mcVersion.Contains("-forge-") || mcVersion.Contains("fabric-loader"))
         {
-            AppendLog("请先在主页选择一个【纯原版】的 Minecraft 版本（如 1.20.1）");
+            AddLog("主页", "请先在下载页选择一个【纯原版】的 Minecraft 版本（如 1.20.1）");
             return;
         }
 
         if (string.IsNullOrEmpty(forgeVersion))
         {
-            AppendLog("请输入 Forge 版本 (如 47.2.0)");
+            AddLog("主页", "请输入 Forge 版本 (如 47.2.0)");
             return;
         }
 
         InstallForgeButton.IsEnabled = false;
-        AppendLog($"开始安装 Forge {mcVersion}-{forgeVersion}...");
+        AddLog("主页", $"开始安装 Forge {mcVersion}-{forgeVersion}...");
 
         try
         {
-            var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(AppendLog));
+            var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(msg => AddLog("主页", msg)));
             var javaPath = JavaPathInput.Text?.Trim() ?? "java";
             var forgeVersionId = await installer.InstallForgeAsync(mcVersion, forgeVersion, javaPath);
-            AppendLog($"✅ Forge 安装成功！版本 ID: {forgeVersionId}");
+            AddLog("主页", $"✅ Forge 安装成功！版本 ID: {forgeVersionId}");
 
             await LoadVersionsAsync(forgeVersionId);
         }
         catch (Exception ex)
         {
-            AppendLog($"❌ Forge 安装失败: {ex.Message}");
+            AddLog("主页", $"❌ Forge 安装失败: {ex.Message}");
         }
         finally
         {
@@ -270,8 +291,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private void AppendLog(string message)
+    // 统一日志输出方法：主页和下载页的日志同步输出
+    private void AddLog(string tab, string message)
     {
-        LogList.Items.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
+        var formatted = $"[{DateTime.Now:HH:mm:ss}] {message}";
+
+        // 主页日志
+        LogList.Items.Add(formatted);
+        if (LogList.ItemCount > 200) LogList.Items.RemoveAt(0); // 防止内存溢出
+
+        // 下载页日志
+        DownloadLogList.Items.Add(formatted);
+        if (DownloadLogList.ItemCount > 200) DownloadLogList.Items.RemoveAt(0);
+
+        // 自动滚动到底部
+        LogList.ScrollIntoView(formatted);
+        DownloadLogList.ScrollIntoView(formatted);
     }
 }

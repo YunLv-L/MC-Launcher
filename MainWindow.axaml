@@ -2,102 +2,195 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="MCLauncher.MainWindow"
         Title="MC-Launcher"
-        Width="820" Height="620"
+        Width="920" Height="680"
+        Background="#181818"
         WindowStartupLocation="CenterScreen">
-  <Grid Margin="20">
+
+  <Window.Styles>
+    <!-- 顶部 Tab 导航栏样式 -->
+    <Style Selector="TabControl">
+      <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="#AAAAAA"/>
+      <Setter Property="Padding" Value="20,12"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="TabItem:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#252526"/>
+    </Style>
+    <Style Selector="TabItem:selected">
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="TabItem:selected /template/ ContentPresenter">
+      <Setter Property="Background" Value="#252526"/>
+      <Setter Property="BorderBrush" Value="#0078D4"/>
+      <Setter Property="BorderThickness" Value="0,0,0,3"/>
+    </Style>
+
+    <!-- 卡片样式 -->
+    <Style Selector="Border.Card">
+      <Setter Property="Background" Value="#252526"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="20"/>
+      <Setter Property="BorderBrush" Value="#333333"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+
+    <!-- 主按钮样式 -->
+    <Style Selector="Button.Primary">
+      <Setter Property="Background" Value="#107C10"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="CornerRadius" Value="6"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid>
     <TabControl>
-      <!-- 主页 Tab -->
-      <TabItem Header="主页" FontSize="15">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="10,15,10,10">
-          <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,20">
-            <TextBlock Text="MC-Launcher" FontSize="28" FontWeight="Bold"/>
-            <TextBlock Text="Minecraft 下载器 · 仅下载阶段" FontSize="12" Foreground="Gray"/>
-          </StackPanel>
 
-          <!-- 第一行：版本选择与下载 -->
-          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
-            <!-- 使用 AutoCompleteBox 替代 ComboBox -->
-            <AutoCompleteBox x:Name="VersionComboBox" Width="220" Watermark="请选择或输入版本" FontSize="14" MinimumPrefixLength="0" FilterMode="Contains"/>
-            <Button x:Name="RefreshVersionsButton" Content="刷新列表" Click="OnRefreshVersionsClick"
-                    Background="#555555" Foreground="White" Padding="12,8" CornerRadius="4"/>
-            <Button x:Name="DownloadButton" Content="开始下载" Click="OnDownloadClick"
-                    Background="#0078D4" Foreground="White" Padding="20,8" CornerRadius="4"/>
-            <Button x:Name="VerifyButton" Content="校验文件" Click="OnVerifyClick"
-                    Background="#555555" Foreground="White" Padding="20,8" CornerRadius="4"/>
-          </StackPanel>
+      <!-- ================= 主页 (Home) ================= -->
+      <TabItem Header="主页">
+        <Grid ColumnDefinitions="320, 15, *" Margin="15">
 
-          <!-- 第二行：启动设置 -->
-          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="0,0,0,12">
-            <TextBox x:Name="UsernameInput" Width="150" Watermark="玩家名字" Text="Steve" FontSize="14"/>
-            <TextBox x:Name="JavaPathInput" Width="220" Watermark="java.exe 路径" Text="java" FontSize="14"/>
-            <Button x:Name="LaunchButton" Content="启动游戏" Click="OnLaunchClick"
-                    Background="#107C10" Foreground="White" Padding="24,8" CornerRadius="4"/>
-          </StackPanel>
+          <!-- 左侧：启动控制台 -->
+          <Border Grid.Column="0" Classes="Card">
+            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="20">
+              <TextBlock Grid.Row="0" Text="启动控制台" FontSize="18" FontWeight="Bold" Foreground="#E0E0E0"/>
 
-          <!-- 第三行：状态与进度 -->
-          <StackPanel Grid.Row="3" Spacing="8" Margin="0,0,0,12">
-            <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪" FontSize="13" Foreground="Gray" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" x:Name="FileCountText" Text="" FontSize="13" Foreground="#0078D4" FontWeight="SemiBold"/>
+              <StackPanel Grid.Row="1" Spacing="10">
+                <TextBlock Text="当前选择的版本" FontSize="13" Foreground="#AAAAAA"/>
+                <!-- 这个框只用于展示同步过来的版本，只读 -->
+                <TextBlock x:Name="HomeSelectedVersionText" Text="尚未选择版本" FontSize="16" FontWeight="SemiBold" Foreground="#0078D4"/>
+              </StackPanel>
+
+              <StackPanel Grid.Row="2" Spacing="15">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="玩家名字" FontSize="13" Foreground="#AAAAAA"/>
+                  <TextBox x:Name="UsernameInput" Height="36" Text="Steve" FontSize="14"/>
+                </StackPanel>
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Java 路径" FontSize="13" Foreground="#AAAAAA"/>
+                  <TextBox x:Name="JavaPathInput" Height="36" Text="java" FontSize="14"/>
+                </StackPanel>
+              </StackPanel>
+
+              <!-- 大启动按钮 -->
+              <Button Grid.Row="4" x:Name="LaunchButton" Classes="Primary" Content="▶  启动游戏" Click="OnLaunchClick" FontSize="18" Height="56" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
             </Grid>
-            <ProgressBar x:Name="ProgressBar" Height="6" Minimum="0" Maximum="100" Value="0" CornerRadius="3"/>
-          </StackPanel>
-
-          <!-- 第四行：日志框 -->
-          <Border Grid.Row="4" BorderBrush="#333" BorderThickness="1" CornerRadius="6" Background="#1E1E1E">
-            <ListBox x:Name="LogList" FontFamily="Consolas" FontSize="12" Background="Transparent" BorderThickness="0" Foreground="#D4D4D4"/>
           </Border>
 
-          <TextBlock Grid.Row="5" Text="下载目录: ./minecraft/" FontSize="11" Foreground="Gray" Margin="0,8,0,0"/>
+          <!-- 右侧：日志区 -->
+          <Border Grid.Column="2" Classes="Card">
+            <Grid RowDefinitions="Auto,*" RowSpacing="15">
+              <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪" FontSize="14" FontWeight="SemiBold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
+              </Grid>
+              <Border Grid.Row="1" Background="#1E1E1E" CornerRadius="6" BorderThickness="1" BorderBrush="#333">
+                <ListBox x:Name="LogList" FontFamily="Consolas, Microsoft YaHei" FontSize="13" Background="Transparent" BorderThickness="0" Foreground="#D4D4D4" Padding="10"/>
+              </Border>
+            </Grid>
+          </Border>
         </Grid>
       </TabItem>
 
-      <!-- 设置 Tab -->
-      <TabItem Header="设置" FontSize="15">
-        <ScrollViewer>
-          <StackPanel Margin="10,20,10,10" Spacing="20">
-            <TextBlock Text="下载设置" FontSize="20" FontWeight="Bold"/>
-            <StackPanel Spacing="8">
-              <TextBlock Text="最大并发下载线程数：" FontSize="14"/>
-              <Grid ColumnDefinitions="Auto,*">
-                <NumericUpDown x:Name="ThreadInput" Width="150" Minimum="1" Maximum="128" Value="16" Increment="1"/>
-                <TextBlock Grid.Column="1" Text="(建议 16~32，过高可能会被服务器限流)" FontSize="12" Foreground="Gray" VerticalAlignment="Center" Margin="15,0,0,0"/>
+      <!-- ================= 下载 (Download) ================= -->
+      <TabItem Header="下载">
+        <Grid RowDefinitions="Auto,*" Margin="15">
+
+          <!-- 顶部控制栏 -->
+          <Border Grid.Row="0" Classes="Card" Margin="0,0,0,15">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="15">
+              <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0" Text="游戏版本" VerticalAlignment="Center" FontSize="14" Foreground="#AAAAAA" Margin="0,0,10,0"/>
+                <AutoCompleteBox Grid.Column="1" x:Name="VersionComboBox" Height="36" MaxDropDownHeight="400" Watermark="请选择或输入版本" FontSize="14" MinimumPrefixLength="0" FilterMode="Contains" SelectionChanged="OnVersionSelectionChanged"/>
+                <Button Grid.Column="2" x:Name="RefreshVersionsButton" Content="刷新列表" Click="OnRefreshVersionsClick" Background="#444444" Foreground="White" Padding="15,0" Height="36" CornerRadius="4" Margin="10,0,0,0"/>
+                <Button Grid.Column="3" x:Name="DownloadButton" Content="开始下载" Click="OnDownloadClick" Background="#0078D4" Foreground="White" Padding="20,0" Height="36" CornerRadius="4" Margin="10,0,0,0"/>
+                <Button Grid.Column="4" x:Name="VerifyButton" Content="校验文件" Click="OnVerifyClick" Background="#444444" Foreground="White" Padding="15,0" Height="36" CornerRadius="4" Margin="10,0,0,0"/>
               </Grid>
-            </StackPanel>
-            <Button x:Name="SaveSettingsButton" Content="保存设置" Click="OnSaveSettingsClick"
-                    Background="#0078D4" Foreground="White" Padding="24,8" CornerRadius="4" HorizontalAlignment="Left"/>
 
-            <Separator Margin="0,10"/>
-
-            <TextBlock Text="模组加载器安装" FontSize="20" FontWeight="Bold"/>
-            <TextBlock Text="提示：安装前请先在“主页”选中基础 Minecraft 版本（如 1.20.1），并确保 Java 路径正确。" FontSize="12" Foreground="Orange"/>
-
-            <!-- Fabric 安装 -->
-            <StackPanel Spacing="8">
-              <TextBlock Text="Fabric" FontSize="16" FontWeight="SemiBold"/>
-              <Grid ColumnDefinitions="Auto,*,Auto">
-                <TextBox x:Name="FabricLoaderVersionInput" Grid.Column="0" Width="200"
-                         Watermark="Loader 版本 (留空为最新)" FontSize="12"/>
-                <Button Grid.Column="2" x:Name="InstallFabricButton" Content="一键安装 Fabric"
-                        Click="OnInstallFabricClick" Background="#0078D4" Foreground="White"
-                        Padding="20,6" CornerRadius="4"/>
+              <!-- 下载进度条区域 -->
+              <Grid Grid.Row="1" RowDefinitions="Auto,Auto" VerticalAlignment="Center">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                  <TextBlock Grid.Column="0" x:Name="DownloadStatusText" Text="等待操作" FontSize="13" Foreground="#AAAAAA"/>
+                  <TextBlock Grid.Column="1" x:Name="FileCountText" Text="" FontSize="13" Foreground="#0078D4" FontWeight="SemiBold"/>
+                </Grid>
+                <ProgressBar Grid.Row="1" x:Name="ProgressBar" Height="8" Minimum="0" Maximum="100" Value="0" CornerRadius="4" Background="#1E1E1E" Foreground="#0078D4"/>
               </Grid>
-            </StackPanel>
+            </Grid>
+          </Border>
 
-            <!-- Forge 安装 -->
-            <StackPanel Spacing="8">
-              <TextBlock Text="Forge" FontSize="16" FontWeight="SemiBold"/>
-              <Grid ColumnDefinitions="Auto,*,Auto">
-                <TextBox x:Name="ForgeVersionInput" Grid.Column="0" Width="200"
-                         Watermark="Forge 版本 (如 47.2.0)" FontSize="12"/>
-                <Button Grid.Column="2" x:Name="InstallForgeButton" Content="一键安装 Forge"
-                        Click="OnInstallForgeClick" Background="#D83B01" Foreground="White"
-                        Padding="20,6" CornerRadius="4"/>
-              </Grid>
-            </StackPanel>
+          <!-- 下方也可以放日志，也可以留空（PCL2 下载页往往有版本列表，这里为了简单复用日志框） -->
+          <Border Grid.Row="1" Classes="Card">
+            <Grid RowDefinitions="Auto,*">
+              <TextBlock Grid.Row="0" Text="下载日志" FontSize="16" FontWeight="Bold" Foreground="#E0E0E0" Margin="0,0,0,10"/>
+              <Border Grid.Row="1" Background="#1E1E1E" CornerRadius="6" BorderThickness="1" BorderBrush="#333">
+                <ListBox x:Name="DownloadLogList" FontFamily="Consolas, Microsoft YaHei" FontSize="13" Background="Transparent" BorderThickness="0" Foreground="#D4D4D4" Padding="10"/>
+              </Border>
+            </Grid>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- ================= 安装 (Install) ================= -->
+      <TabItem Header="安装">
+        <ScrollViewer Margin="15">
+          <StackPanel Spacing="15">
+
+            <!-- 模组加载器安装 -->
+            <Border Classes="Card">
+              <StackPanel Spacing="20">
+                <TextBlock Text="模组加载器安装" FontSize="18" FontWeight="Bold" Foreground="#E0E0E0"/>
+                <TextBlock Text="提示：安装前请先在“下载”页选中基础 Minecraft 版本（如 1.20.1），并确保主页的 Java 路径正确。" FontSize="13" Foreground="#FFB900"/>
+
+                <!-- Fabric 安装 -->
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Fabric" FontSize="16" FontWeight="SemiBold" Foreground="#E0E0E0"/>
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBox x:Name="FabricLoaderVersionInput" Grid.Column="0" Width="200" Height="36" Watermark="Loader 版本 (留空为最新)" FontSize="13"/>
+                    <Button Grid.Column="2" x:Name="InstallFabricButton" Content="一键安装 Fabric" Click="OnInstallFabricClick" Background="#0078D4" Foreground="White" Padding="20,0" Height="36" CornerRadius="4"/>
+                  </Grid>
+                </StackPanel>
+
+                <Separator Background="#333" Height="1" Margin="0,5"/>
+
+                <!-- Forge 安装 -->
+                <StackPanel Spacing="10">
+                  <TextBlock Text="Forge" FontSize="16" FontWeight="SemiBold" Foreground="#E0E0E0"/>
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBox x:Name="ForgeVersionInput" Grid.Column="0" Width="200" Height="36" Watermark="Forge 版本 (如 47.2.0)" FontSize="13"/>
+                    <Button Grid.Column="2" x:Name="InstallForgeButton" Content="一键安装 Forge" Click="OnInstallForgeClick" Background="#D83B01" Foreground="White" Padding="20,0" Height="36" CornerRadius="4"/>
+                  </Grid>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
           </StackPanel>
         </ScrollViewer>
       </TabItem>
+
+      <!-- ================= 设置 (Settings) ================= -->
+      <TabItem Header="设置">
+        <ScrollViewer Margin="15">
+          <StackPanel Spacing="15">
+            <Border Classes="Card">
+              <StackPanel Spacing="15">
+                <TextBlock Text="下载设置" FontSize="18" FontWeight="Bold" Foreground="#E0E0E0"/>
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <TextBlock Grid.Column="0" Text="最大并发下载线程数：" FontSize="14" Foreground="#AAAAAA" VerticalAlignment="Center"/>
+                  <NumericUpDown Grid.Column="1" x:Name="ThreadInput" Width="150" Height="36" HorizontalAlignment="Left" Minimum="1" Maximum="128" Value="16" Increment="1" Margin="10,0,0,0"/>
+                  <TextBlock Grid.Column="2" Text="(建议 16~32，过高可能会被服务器限流)" FontSize="12" Foreground="#666666" VerticalAlignment="Center"/>
+                </Grid>
+                <Button x:Name="SaveSettingsButton" Content="保存设置" Click="OnSaveSettingsClick" Background="#0078D4" Foreground="White" Padding="20,8" CornerRadius="4" HorizontalAlignment="Left"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
     </TabControl>
   </Grid>
 </Window>
