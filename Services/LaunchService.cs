@@ -71,6 +71,12 @@ public class LaunchService
         {
             "-Xmx2G", "-Xms1G",
             "-Djava.library.path=" + nativesDir,
+
+            // 🌟 核心修复：添加允许 Forge 反射访问的参数 (兼容 Java 17+)
+            "--add-opens", "java.base/java.lang.invoke=ALL-UNNAMED",
+            "--add-opens", "java.base/java.lang=ALL-UNNAMED",
+            "--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED",
+
             "-cp", cpString,
             mergedDetail.MainClass ?? "net.minecraft.client.main.Main",
         };
