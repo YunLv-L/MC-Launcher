@@ -23,7 +23,6 @@ public class ModLoaderInstaller
         _http.DefaultRequestHeaders.Add("User-Agent", "MC-Launcher/0.1");
     }
 
-    // ================== Fabric 安装 ==================
     public async Task<string> InstallFabricAsync(string mcVersion, string? specificLoaderVersion = null)
     {
         _log.Report("正在获取 Fabric 元数据...");
@@ -78,7 +77,6 @@ public class ModLoaderInstaller
         return versionId;
     }
 
-    // ================== Forge 安装 (通过调用官方 Installer) ==================
     public async Task<string> InstallForgeAsync(string mcVersion, string forgeVersion, string javaPath)
     {
         var forgeFullVersion = $"{mcVersion}-{forgeVersion}";
@@ -86,7 +84,6 @@ public class ModLoaderInstaller
         var installerUrl = $"https://maven.minecraftforge.net/net/minecraftforge/forge/{forgeFullVersion}/{installerJarName}";
         var installerPath = Path.Combine(_baseDir, installerJarName);
 
-        // 1. 下载 Installer
         if (!File.Exists(installerPath))
         {
             _log.Report($"正在下载 Forge Installer: {installerJarName}");
@@ -95,7 +92,6 @@ public class ModLoaderInstaller
             _log.Report("Forge Installer 下载完成。");
         }
 
-        // ================== 关键修复：生成 launcher_profiles.json ==================
         var profilePath = Path.Combine(_baseDir, "launcher_profiles.json");
         if (!File.Exists(profilePath))
         {
@@ -121,31 +117,40 @@ public class ModLoaderInstaller
             await File.WriteAllTextAsync(profilePath, profileJson);
             _log.Report("launcher_profiles.json 生成完毕。");
         }
-        // =========================================================================
 
-        // 2. 执行静默安装
-        _log.Report($"正在启动 Forge 安装程序 (静默模式)...");
-        var psi = new ProcessStartInfo
+        _log.Report($"正在启动 Forge 安装程序 (后台静默安装，请耐心等待 3~5 分钟)...");
+
+        // 把进程启动和等待完全推到后台线程池，绝对不卡主线程
+        await Task.Run(async () =>
         {
-            FileName = javaPath,
-            Arguments = $"-jar \"{installerPath}\" --installClient \"{_baseDir}\"",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = _baseDir
-        };
+            var psi = new ProcessStartInfo
+            {
+                FileName = javaPath,
+                Arguments = $"-Djava.awt.headless=true -jar \"{installerPath}\" --installClient \"{_baseDir}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                WorkingDirectory = _baseDir
+            };
 
-        using var process = Process.Start(psi);
-        if (process == null) throw new Exception("无法启动 Java 进程");
+            using var process = Process.Start(psi);
+            if (process == null) throw new Exception("无法启动 Java 进程");
 
-        process.OutputDataReceived += (s, e) => { if (!string.IsNullOrEmpty(e.Data)) _log.Report($"[Forge] {e.Data}"); };
-        process.ErrorDataReceived += (s, e) => { if (!string.IsNullOrEmpty(e.Data)) _log.Report($"[Forge Error] {e.Data}"); };
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+            // 立刻关闭输入流，防止 Forge 在后台等待 (y/n) 导致死锁
+            process.StandardInput.Close();
 
-        await process.WaitForExitAsync();
-        if (process.ExitCode != 0) throw new Exception($"Forge 安装程序退出码: {process.ExitCode}");
+            // 🌟 核心绝杀：开启两个后台任务，纯粹消费（Discard）输出，不存入任何内存，防止管道塞满
+            _ = Task.Run(() => { while (process.StandardOutput.ReadLine() != null) { } });
+            _ = Task.Run(() => { while (process.StandardError.ReadLine() != null) { } });
+
+            // 等待进程彻底退出
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode != 0)
+                throw new Exception($"Forge 安装程序异常退出，代码: {process.ExitCode}");
+        });
 
         _log.Report("Forge 安装程序执行完毕。");
 

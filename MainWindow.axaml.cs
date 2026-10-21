@@ -23,7 +23,6 @@ public partial class MainWindow : Window
         var baseDir = Path.Combine(AppContext.BaseDirectory, "minecraft");
         _versionService = new VersionService(baseDir);
 
-        // 异步加载版本列表
         _ = LoadVersionsAsync();
     }
 
@@ -68,7 +67,6 @@ public partial class MainWindow : Window
         return VersionComboBox.Text?.Trim() ?? "";
     }
 
-    // 当在下载页切换版本时，同步更新主页的文本
     private void OnVersionSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         UpdateHomeVersionText();
@@ -219,8 +217,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // ================== 安装按钮事件 ==================
-
     private async void OnInstallFabricClick(object? sender, RoutedEventArgs e)
     {
         var mcVersion = GetSelectedVersion();
@@ -274,9 +270,12 @@ public partial class MainWindow : Window
 
         try
         {
+            // 这里显式使用 Task.Run 将安装过程彻底推入后台线程
             var installer = new ModLoaderInstaller(Path.Combine(AppContext.BaseDirectory, "minecraft"), new Progress<string>(msg => AddLog("主页", msg)));
             var javaPath = JavaPathInput.Text?.Trim() ?? "java";
-            var forgeVersionId = await installer.InstallForgeAsync(mcVersion, forgeVersion, javaPath);
+
+            var forgeVersionId = await Task.Run(() => installer.InstallForgeAsync(mcVersion, forgeVersion, javaPath));
+
             AddLog("主页", $"✅ Forge 安装成功！版本 ID: {forgeVersionId}");
 
             await LoadVersionsAsync(forgeVersionId);
@@ -291,21 +290,14 @@ public partial class MainWindow : Window
         }
     }
 
-    // 统一日志输出方法：主页和下载页的日志同步输出
     private void AddLog(string tab, string message)
     {
         var formatted = $"[{DateTime.Now:HH:mm:ss}] {message}";
 
-        // 主页日志
         LogList.Items.Add(formatted);
-        if (LogList.ItemCount > 200) LogList.Items.RemoveAt(0); // 防止内存溢出
+        if (LogList.ItemCount > 300) LogList.Items.RemoveAt(0);
 
-        // 下载页日志
         DownloadLogList.Items.Add(formatted);
-        if (DownloadLogList.ItemCount > 200) DownloadLogList.Items.RemoveAt(0);
-
-        // 自动滚动到底部
-        LogList.ScrollIntoView(formatted);
-        DownloadLogList.ScrollIntoView(formatted);
+        if (DownloadLogList.ItemCount > 300) DownloadLogList.Items.RemoveAt(0);
     }
 }
